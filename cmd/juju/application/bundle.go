@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
@@ -1372,7 +1371,7 @@ func buildModelRepresentation(
 		// even bother checking the error response here.
 		ac, _ := constraints.Parse(a)
 		bc, _ := constraints.Parse(b)
-		return reflect.DeepEqual(ac, bc)
+		return ac.String() == bc.String()
 	}
 
 	return model, nil
