@@ -19,6 +19,7 @@ import (
 	jujutesting "github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	ft "github.com/juju/testing/filetesting"
+	"github.com/juju/utils/clock"
 	gc "gopkg.in/check.v1"
 	corecharm "gopkg.in/juju/charm.v6-unstable"
 
@@ -206,11 +207,6 @@ func (m *noopExecutor) Run(op operation.Operation) error {
 }
 
 func (s *UniterSuite) TestUniterStartupStatus(c *gc.C) {
-	executorFunc := func(stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (operation.Executor, error) {
-		e, err := operation.NewExecutor(stateFilePath, getInstallCharm, acquireLock)
-		c.Assert(err, jc.ErrorIsNil)
-		return &mockExecutor{e}, nil
-	}
 	s.runUniterTests(c, []uniterTest{
 		ut(
 			"unit status and message at startup",
@@ -219,7 +215,7 @@ func (s *UniterSuite) TestUniterStartupStatus(c *gc.C) {
 			ensureStateWorker{},
 			createApplicationAndUnit{},
 			startUniter{
-				newExecutorFunc: executorFunc,
+				newExecutorFunc: newMockExecutor,
 			},
 			waitUnitAgent{
 				statusGetter: unitStatusGetter,
@@ -1672,11 +1668,11 @@ func (s *UniterSuite) TestRebootNowKillsHook(c *gc.C) {
 			serveCharm{},
 			ensureStateWorker{},
 			createApplicationAndUnit{},
-			startUniter{},
+			startUniter{newExecutorFunc: newMockExecutor},
 			waitAddresses{},
 			waitUniterDead{err: "machine needs to reboot"},
 			waitHooks{"install"},
-			startUniter{},
+			startUniter{newExecutorFunc: newMockExecutor},
 			waitUnitAgent{
 				status: status.Idle,
 			},
@@ -1943,18 +1939,19 @@ func (m *mockExecutor) Run(op operation.Operation) error {
 	return mockExecutorErr
 }
 
+func newMockExecutor(_ clock.Clock, stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (operation.Executor, error) {
+	e, err := operation.NewExecutor(noWaitClock{}, stateFilePath, getInstallCharm, acquireLock)
+	c.Assert(err, jc.ErrorIsNil)
+	return &mockExecutor{e}, nil
+}
+
 func (s *UniterSuite) TestOperationErrorReported(c *gc.C) {
-	executorFunc := func(stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (operation.Executor, error) {
-		e, err := operation.NewExecutor(stateFilePath, getInstallCharm, acquireLock)
-		c.Assert(err, jc.ErrorIsNil)
-		return &mockExecutor{e}, nil
-	}
 	s.runUniterTests(c, []uniterTest{
 		ut(
 			"error running operations are reported",
 			createCharm{},
 			serveCharm{},
-			createUniter{executorFunc: executorFunc},
+			createUniter{executorFunc: newMockExecutor},
 			waitUnitAgent{
 				status: status.Failed,
 				info:   "resolver loop error",
@@ -1965,11 +1962,6 @@ func (s *UniterSuite) TestOperationErrorReported(c *gc.C) {
 }
 
 func (s *UniterSuite) TestTranslateResolverError(c *gc.C) {
-	executorFunc := func(stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (operation.Executor, error) {
-		e, err := operation.NewExecutor(stateFilePath, getInstallCharm, acquireLock)
-		c.Assert(err, jc.ErrorIsNil)
-		return &mockExecutor{e}, nil
-	}
 	translateResolverErr := func(in error) error {
 		c.Check(errors.Cause(in), gc.Equals, mockExecutorErr)
 		return errors.New("some other error")
@@ -1980,7 +1972,7 @@ func (s *UniterSuite) TestTranslateResolverError(c *gc.C) {
 			createCharm{},
 			serveCharm{},
 			createUniter{
-				executorFunc:         executorFunc,
+				executorFunc:         newMockExecutor,
 				translateResolverErr: translateResolverErr,
 			},
 			waitUnitAgent{
@@ -1990,4 +1982,17 @@ func (s *UniterSuite) TestTranslateResolverError(c *gc.C) {
 			expectError{".*some other error.*"},
 		),
 	})
+}
+
+type noWaitClock struct {
+	clock.Clock
+}
+
+// After doesn't wait, and just returns uninitialized time.
+func (noWaitClock) After(_ time.Duration) <-chan time.Time {
+	// Return a closed channel so pulling off a time happens
+	// without delay.
+	c := make(chan time.Time)
+	close(c)
+	return c
 }

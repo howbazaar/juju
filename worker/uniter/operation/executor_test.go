@@ -5,12 +5,14 @@ package operation_test
 
 import (
 	"path/filepath"
+	"time"
 
 	"github.com/juju/errors"
 	"github.com/juju/mutex"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	ft "github.com/juju/testing/filetesting"
+	"github.com/juju/utils/clock"
 	gc "gopkg.in/check.v1"
 	corecharm "gopkg.in/juju/charm.v6-unstable"
 	"gopkg.in/juju/charm.v6-unstable/hooks"
@@ -44,14 +46,14 @@ func (s *NewExecutorSuite) path(path string) string {
 }
 
 func (s *NewExecutorSuite) TestNewExecutorNoFileNoCharm(c *gc.C) {
-	executor, err := operation.NewExecutor(s.path("missing"), failGetInstallCharm, failAcquireLock)
+	executor, err := operation.NewExecutor(noWaitClock{}, s.path("missing"), failGetInstallCharm, failAcquireLock)
 	c.Assert(executor, gc.IsNil)
 	c.Assert(err, gc.ErrorMatches, "lol!")
 }
 
 func (s *NewExecutorSuite) TestNewExecutorInvalidFile(c *gc.C) {
 	ft.File{"existing", "", 0666}.Create(c, s.basePath)
-	executor, err := operation.NewExecutor(s.path("existing"), failGetInstallCharm, failAcquireLock)
+	executor, err := operation.NewExecutor(noWaitClock{}, s.path("existing"), failGetInstallCharm, failAcquireLock)
 	c.Assert(executor, gc.IsNil)
 	c.Assert(err, gc.ErrorMatches, `cannot read ".*": invalid operation state: .*`)
 }
@@ -61,7 +63,7 @@ func (s *NewExecutorSuite) TestNewExecutorNoFile(c *gc.C) {
 	getInstallCharm := func() (*corecharm.URL, error) {
 		return charmURL, nil
 	}
-	executor, err := operation.NewExecutor(s.path("missing"), getInstallCharm, failAcquireLock)
+	executor, err := operation.NewExecutor(noWaitClock{}, s.path("missing"), getInstallCharm, failAcquireLock)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(executor.State(), gc.DeepEquals, operation.State{
 		Kind:     operation.Install,
@@ -81,7 +83,7 @@ started: true
 op: continue
 opstep: pending
 `[1:], 0666}.Create(c, s.basePath)
-	executor, err := operation.NewExecutor(s.path("existing"), failGetInstallCharm, failAcquireLock)
+	executor, err := operation.NewExecutor(noWaitClock{}, s.path("existing"), failGetInstallCharm, failAcquireLock)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(executor.State(), gc.DeepEquals, operation.State{
 		Kind:    operation.Continue,
@@ -106,7 +108,7 @@ func newExecutor(c *gc.C, st *operation.State) (operation.Executor, string) {
 	path := filepath.Join(c.MkDir(), "state")
 	err := operation.NewStateFile(path).Write(st)
 	c.Assert(err, jc.ErrorIsNil)
-	executor, err := operation.NewExecutor(path, failGetInstallCharm, failAcquireLock)
+	executor, err := operation.NewExecutor(noWaitClock{}, path, failGetInstallCharm, failAcquireLock)
 	c.Assert(err, jc.ErrorIsNil)
 	return executor, path
 }
@@ -331,7 +333,7 @@ func (s *ExecutorSuite) initLockTest(c *gc.C, lockFunc func() (mutex.Releaser, e
 	statePath := filepath.Join(c.MkDir(), "state")
 	err := operation.NewStateFile(statePath).Write(&initialState)
 	c.Assert(err, jc.ErrorIsNil)
-	executor, err := operation.NewExecutor(statePath, failGetInstallCharm, lockFunc)
+	executor, err := operation.NewExecutor(noWaitClock{}, statePath, failGetInstallCharm, lockFunc)
 	c.Assert(err, jc.ErrorIsNil)
 
 	return executor
@@ -526,4 +528,17 @@ func (op *mockOperation) Execute(state operation.State) (*operation.State, error
 
 func (op *mockOperation) Commit(state operation.State) (*operation.State, error) {
 	return op.commit.run(state)
+}
+
+type noWaitClock struct {
+	clock.Clock
+}
+
+// After doesn't wait, and just returns uninitialized time.
+func (noWaitClock) After(_ time.Duration) <-chan time.Time {
+	// Return a closed channel so pulling off a time happens
+	// without delay.
+	c := make(chan time.Time)
+	close(c)
+	return c
 }

@@ -5,9 +5,11 @@ package operation
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/juju/errors"
 	"github.com/juju/mutex"
+	"github.com/juju/utils/clock"
 	corecharm "gopkg.in/juju/charm.v6-unstable"
 )
 
@@ -24,19 +26,30 @@ var (
 	stepPrepare = executorStep{"preparing", Operation.Prepare}
 	stepExecute = executorStep{"executing", Operation.Execute}
 	stepCommit  = executorStep{"committing", Operation.Commit}
+
+	// If a unit is extrememly busy with a lot of hooks firing, it is likely
+	// that the time between releasing the hook execution lock, and
+	// reacquiring the lock will happen before any other agent on the machine
+	// is able to acquire the lock. This causes starvation in the other agents
+	// where they are unlikely to progress. Since the delay used in the
+	// acquisition of the lock is 250ms, once the executor has released the
+	// lock, it takes a little nap to let the other agents have a turn.
+	// See bug #1717590.
+	postLockReleaseNap = 500 * time.Millisecond
 )
 
 type executor struct {
 	file               *StateFile
 	state              *State
 	acquireMachineLock func() (mutex.Releaser, error)
+	clock              clock.Clock
 }
 
 // NewExecutor returns an Executor which takes its starting state from the
 // supplied path, and records state changes there. If no state file exists,
 // the executor's starting state will include a queued Install hook, for
 // the charm identified by the supplied func.
-func NewExecutor(stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (Executor, error) {
+func NewExecutor(clock clock.Clock, stateFilePath string, getInstallCharm func() (*corecharm.URL, error), acquireLock func() (mutex.Releaser, error)) (Executor, error) {
 	file := NewStateFile(stateFilePath)
 	state, err := file.Read()
 	if err == ErrNoStateFile {
@@ -56,6 +69,7 @@ func NewExecutor(stateFilePath string, getInstallCharm func() (*corecharm.URL, e
 		file:               file,
 		state:              state,
 		acquireMachineLock: acquireLock,
+		clock:              clock,
 	}, nil
 }
 
@@ -73,8 +87,11 @@ func (x *executor) Run(op Operation) error {
 		if err != nil {
 			return errors.Annotate(err, "could not acquire lock")
 		}
-		defer logger.Debugf("lock released")
-		defer releaser.Release()
+		defer func() {
+			releaser.Release()
+			logger.Debugf("lock released")
+			<-x.clock.After(postLockReleaseNap)
+		}()
 	}
 
 	switch err := x.do(op, stepPrepare); errors.Cause(err) {
