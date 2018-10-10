@@ -184,6 +184,10 @@ type ManifoldsConfig struct {
 	// config value as the logging config in the agent.conf file.
 	UpdateLoggerConfig func(string) error
 
+	// UpdateControllerAPIPort is a function that will save the updated
+	// controller api port in the agent.conf file.
+	UpdateControllerAPIPort func(int) error
+
 	// NewAgentStatusSetter provides upgradesteps.StatusSetter.
 	NewAgentStatusSetter func(apiConn api.Connection) (upgradesteps.StatusSetter, error)
 
@@ -678,14 +682,16 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 		))),
 
 		httpServerName: httpserver.Manifold(httpserver.ManifoldConfig{
-			AgentName:             agentName,
-			CertWatcherName:       certificateWatcherName,
-			ClockName:             clockName,
-			StateName:             stateName,
-			PrometheusRegisterer:  config.PrometheusRegisterer,
-			NewTLSConfig:          httpserver.NewTLSConfig,
-			NewStateAuthenticator: httpserver.NewStateAuthenticator,
-			NewWorker:             httpserver.NewWorkerShim,
+			AgentName:               agentName,
+			CertWatcherName:         certificateWatcherName,
+			ClockName:               clockName,
+			StateName:               stateName,
+			PrometheusRegisterer:    config.PrometheusRegisterer,
+			Hub:                     config.CentralHub,
+			NewTLSConfig:            httpserver.NewTLSConfig,
+			NewStateAuthenticator:   httpserver.NewStateAuthenticator,
+			NewWorker:               httpserver.NewWorkerShim,
+			UpdateControllerAPIPort: config.UpdateControllerAPIPort,
 		}),
 
 		apiServerName: apiserver.Manifold(apiserver.ManifoldConfig{

@@ -11,26 +11,37 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
+	"github.com/juju/collections/set"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/pubsub"
+	"github.com/juju/utils/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/juju/worker.v1/catacomb"
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/apiserver/apiserverhttp"
+	"github.com/juju/juju/pubsub/apiserver"
+	"github.com/juju/juju/pubsub/controller"
 )
 
 var logger = loggo.GetLogger("juju.worker.httpserver")
 
 // Config is the configuration required for running an API server worker.
 type Config struct {
-	AgentConfig          agent.Config
-	TLSConfig            *tls.Config
-	AutocertHandler      http.Handler
-	AutocertListener     net.Listener
-	Mux                  *apiserverhttp.Mux
-	PrometheusRegisterer prometheus.Registerer
+	AgentConfig             agent.Config
+	Clock                   clock.Clock
+	TLSConfig               *tls.Config
+	AutocertHandler         http.Handler
+	AutocertListener        net.Listener
+	Mux                     *apiserverhttp.Mux
+	PrometheusRegisterer    prometheus.Registerer
+	Hub                     *pubsub.StructuredHub
+	ServerAddresses         []string
+	UpdateControllerAPIPort func(int) error
 }
 
 // Validate validates the API server configuration.
@@ -75,6 +86,11 @@ type Worker struct {
 	catacomb catacomb.Catacomb
 	config   Config
 	url      chan string
+
+	controllerAPIPort int
+
+	gated *gatedListener
+	unsub func()
 }
 
 func (w *Worker) Kill() {
@@ -97,16 +113,49 @@ func (w *Worker) URL() string {
 }
 
 func (w *Worker) loop() error {
+	apiserverAddresses := set.NewStrings("127.0.0.1", "localhost", "::1")
+	for _, addr := range w.config.ServerAddresses {
+		a, _, _ := net.SplitHostPort(addr)
+		apiserverAddresses.Add(a)
+	}
+
 	servingInfo, ok := w.config.AgentConfig.StateServingInfo()
 	if !ok {
 		return errors.New("missing state serving info")
 	}
+	w.controllerAPIPort = servingInfo.ControllerAPIPort
+	unsub, err := w.config.Hub.Subscribe(controller.ConfigChanged,
+		func(topic string, data controller.ConfigChangedMessage, err error) {
+			port := data.Config.ControllerAPIPort()
+			if port != w.controllerAPIPort {
+				w.controllerAPIPort = port
+				logger.Infof("updating controller API port to %v", port)
+				err := w.config.UpdateControllerAPIPort(port)
+				if err != nil {
+					logger.Errorf("unable to update agent.conf with new controller API port: %v", err)
+				}
+			}
+		})
+	if err != nil {
+		return errors.Annotate(err, "unable to subscribe to details topic")
+	}
+	defer unsub()
+
 	listenAddr := net.JoinHostPort("", strconv.Itoa(servingInfo.APIPort))
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return errors.Trace(err)
 	}
-	listener = tls.NewListener(listener, w.config.TLSConfig)
+	w.gated = &gatedListener{
+		Listener:           listener,
+		apiserverAddresses: apiserverAddresses,
+	}
+	w.unsub, err = w.config.Hub.Subscribe(apiserver.DetailsTopic, w.allowAllConnections)
+	if err != nil {
+		return errors.Annotate(err, "unable to subscribe to details topic")
+	}
+
+	listener = tls.NewListener(w.gated, w.config.TLSConfig)
 	// TODO(axw) rate-limit connections by wrapping listener
 
 	serverLog := log.New(&loggoWrapper{
@@ -152,4 +201,52 @@ func (w *Worker) loop() error {
 		case w.url <- url:
 		}
 	}
+}
+
+// Unlock allows connections from all ip addresses not just controllers.
+func (w *Worker) allowAllConnections(_ string, _ map[string]interface{}) {
+	if delay := w.config.AgentConfig.Value("CONTROLLER_READY_DELAY"); delay != "" {
+		d, err := time.ParseDuration(delay)
+		if err != nil {
+			logger.Warningf("agent config file has bad value for CONTROLLER_READY_DELAY duration: %v", err)
+		} else {
+			logger.Infof("waiting for %s before allowing connections", d)
+			<-w.config.Clock.After(d)
+		}
+	}
+	logger.Infof("unlocking api port for all connections")
+	w.gated.mu.Lock()
+	w.gated.acceptAll = true
+	w.gated.mu.Unlock()
+	w.unsub()
+}
+
+type gatedListener struct {
+	net.Listener
+	apiserverAddresses set.Strings
+	acceptAll          bool
+	mu                 sync.Mutex
+}
+
+func (g *gatedListener) Accept() (net.Conn, error) {
+	c, err := g.Listener.Accept()
+	if err != nil {
+		return c, err
+	}
+	remote := c.RemoteAddr()
+	addr, _, _ := net.SplitHostPort(remote.String())
+
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	if g.acceptAll {
+		return c, nil
+	}
+	if g.apiserverAddresses.Contains(addr) {
+		return c, nil
+	}
+	logger.Criticalf("deny connection from %s", addr)
+	// c.Close()
+	// return nil, errors.New("controller starting up")
+	return c, nil
 }

@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/juju/errors"
+	"github.com/juju/pubsub"
 	"github.com/juju/utils/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/juju/worker.v1"
@@ -32,10 +33,12 @@ type ManifoldConfig struct {
 	StateName       string
 
 	PrometheusRegisterer prometheus.Registerer
+	Hub                  *pubsub.StructuredHub
 
-	NewStateAuthenticator NewStateAuthenticatorFunc
-	NewTLSConfig          func(*state.State, func() *tls.Certificate) (*tls.Config, http.Handler, error)
-	NewWorker             func(Config) (worker.Worker, error)
+	NewStateAuthenticator   NewStateAuthenticatorFunc
+	NewTLSConfig            func(*state.State, func() *tls.Certificate) (*tls.Config, http.Handler, error)
+	NewWorker               func(Config) (worker.Worker, error)
+	UpdateControllerAPIPort func(int) error
 }
 
 // Validate validates the manifold configuration.
@@ -55,6 +58,9 @@ func (config ManifoldConfig) Validate() error {
 	if config.PrometheusRegisterer == nil {
 		return errors.NotValidf("nil PrometheusRegisterer")
 	}
+	if config.Hub == nil {
+		return errors.NotValidf("nil Hub")
+	}
 	if config.NewStateAuthenticator == nil {
 		return errors.NotValidf("nil NewStateAuthenticator")
 	}
@@ -63,6 +69,9 @@ func (config ManifoldConfig) Validate() error {
 	}
 	if config.NewWorker == nil {
 		return errors.NotValidf("nil NewWorker")
+	}
+	if config.UpdateControllerAPIPort == nil {
+		return errors.NotValidf("nil UpdateControllerAPIPort")
 	}
 	return nil
 }
@@ -123,6 +132,10 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	addrs, err := systemState.Addresses()
+	if err != nil {
+		return nil, errors.Annotate(err, "unable to get apiserver addresses")
+	}
 
 	var autocertListener net.Listener
 	if autocertHandler != nil {
@@ -151,12 +164,16 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 	}
 
 	w, err := config.NewWorker(Config{
-		AgentConfig:          agent.CurrentConfig(),
-		PrometheusRegisterer: config.PrometheusRegisterer,
-		TLSConfig:            tlsConfig,
-		AutocertHandler:      autocertHandler,
-		AutocertListener:     autocertListener,
-		Mux:                  mux,
+		AgentConfig:             agent.CurrentConfig(),
+		Clock:                   clock,
+		PrometheusRegisterer:    config.PrometheusRegisterer,
+		Hub:                     config.Hub,
+		TLSConfig:               tlsConfig,
+		AutocertHandler:         autocertHandler,
+		AutocertListener:        autocertListener,
+		Mux:                     mux,
+		ServerAddresses:         addrs,
+		UpdateControllerAPIPort: config.UpdateControllerAPIPort,
 	})
 	if err != nil {
 		close(abort)

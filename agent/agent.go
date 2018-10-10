@@ -304,6 +304,9 @@ type configSetterOnly interface {
 	// to run a controller
 	SetStateServingInfo(info params.StateServingInfo)
 
+	// SetControllerAPIPort sets the controller API port in the config.
+	SetControllerAPIPort(port int)
+
 	// SetMongoVersion sets the passed version as currently in use.
 	SetMongoVersion(mongo.Version)
 
@@ -681,6 +684,12 @@ func (c *configInternal) SetStateServingInfo(info params.StateServingInfo) {
 	c.servingInfo = &info
 	if c.statePassword == "" && c.apiDetails != nil {
 		c.statePassword = c.apiDetails.password
+	}
+}
+
+func (c *configInternal) SetControllerAPIPort(port int) {
+	if c.servingInfo != nil {
+		c.servingInfo.ControllerAPIPort = port
 	}
 }
 

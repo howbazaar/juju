@@ -31,6 +31,14 @@ const (
 	// APIPort is the port used for api connections.
 	APIPort = "api-port"
 
+	// ControllerAPIPort is an optional port that may be set for controllers
+	// that have a very heavy load. If this port is set, this port is used by
+	// the controllers to talk to each other - used for the local API connection
+	// as well as the pubsub forwarders, and the raft workers. If this value is
+	// set, the api-port isn't opened until the controllers have started
+	// properly.
+	ControllerAPIPort = "controller-api-port"
+
 	// AuditingEnabled determines whether the controller will record
 	// auditing information.
 	AuditingEnabled = "auditing-enabled"
@@ -194,6 +202,7 @@ var (
 		AutocertDNSNameKey,
 		AutocertURLKey,
 		CACertKey,
+		ControllerAPIPort,
 		ControllerUUIDKey,
 		IdentityPublicKey,
 		IdentityURL,
@@ -223,6 +232,7 @@ var (
 		AuditingEnabled,
 		AuditLogCaptureArgs,
 		AuditLogExcludeMethods,
+		ControllerAPIPort,
 		MaxPruneTxnBatchSize,
 		MaxPruneTxnPasses,
 		JujuHASpace,
@@ -327,6 +337,17 @@ func (c Config) StatePort() int {
 // APIPort returns the API server port for the environment.
 func (c Config) APIPort() int {
 	return c.mustInt(APIPort)
+}
+
+// ControllerAPIPort returns the optional API port to be used for
+// the controllers to talk to each other. A zero value means that
+// it is not set.
+func (c Config) ControllerAPIPort() int {
+	if value, ok := c[ControllerAPIPort].(float64); ok {
+		return int(value)
+	}
+	value, _ := c[ControllerAPIPort].(int)
+	return value
 }
 
 // AuditingEnabled returns whether or not auditing has been enabled
@@ -620,6 +641,20 @@ func Validate(c Config) error {
 		}
 	}
 
+	if v, ok := c[ControllerAPIPort].(int); ok {
+		// TODO: change the validation so 0 is invalide and --reset is used.
+		// However that doesn't exist yet.
+		if v < 0 {
+			return errors.NotValidf("non-positive integer for controller-api-port")
+		}
+		if v == c.APIPort() {
+			return errors.NotValidf("controller-api-port matching api-port")
+		}
+		if v == c.StatePort() {
+			return errors.NotValidf("controller-api-port matching state-port")
+		}
+	}
+
 	return nil
 }
 
@@ -690,6 +725,7 @@ var configChecker = schema.FieldMap(schema.Fields{
 	AuditLogMaxBackups:      schema.ForceInt(),
 	AuditLogExcludeMethods:  schema.List(schema.String()),
 	APIPort:                 schema.ForceInt(),
+	ControllerAPIPort:       schema.ForceInt(),
 	StatePort:               schema.ForceInt(),
 	IdentityURL:             schema.String(),
 	IdentityPublicKey:       schema.String(),
@@ -709,6 +745,7 @@ var configChecker = schema.FieldMap(schema.Fields{
 	Features:                schema.List(schema.String()),
 }, schema.Defaults{
 	APIPort:                 DefaultAPIPort,
+	ControllerAPIPort:       schema.Omit,
 	AuditingEnabled:         DefaultAuditingEnabled,
 	AuditLogCaptureArgs:     DefaultAuditLogCaptureArgs,
 	AuditLogMaxSize:         fmt.Sprintf("%vM", DefaultAuditLogMaxSizeMB),
