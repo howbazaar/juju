@@ -70,9 +70,8 @@ func NewWorker(config Config) (*Worker, error) {
 	}
 
 	w := &Worker{
-		config:              config,
-		url:                 make(chan string),
-		apiServerRegistered: make(chan struct{}),
+		config: config,
+		url:    make(chan string),
 	}
 
 	servingInfo, ok := config.AgentConfig.StateServingInfo()
@@ -87,23 +86,6 @@ func NewWorker(config Config) (*Worker, error) {
 	// to the controller over the controller port.
 	w.updateControllerPort(w.config.ControllerAPIPort)
 
-	// TODO (thumper): from 2.5 onwards we should also wait for the
-	// raft transport worker to start. In 2.4 though it is possible that
-	// it isn't running, so we ignore it here.
-
-	// Declare the unsub function so the function closure in the Subscribe
-	// call can use it.
-	var err error
-	var unsub func()
-	unsub, err = config.Hub.Subscribe(apiserver.MuxRegisteredTopic, func(_ string, _ map[string]interface{}) {
-		logger.Infof("told that apiserver is ready")
-		close(w.apiServerRegistered)
-		// Don't need to listen any more.
-		unsub()
-	})
-	if err != nil {
-		return nil, errors.Annotate(err, "unable to subscribe to apiserver registered topic.")
-	}
 	if err := catacomb.Invoke(catacomb.Plan{
 		Site: &w.catacomb,
 		Work: w.loop,
@@ -117,12 +99,6 @@ type Worker struct {
 	catacomb catacomb.Catacomb
 	config   Config
 	url      chan string
-
-	// The http server and the api server have a mutual relationship.
-	// This worker runs the http server, but all the end point handling
-	// is done by the apiserver. If this worker starts the Serve method
-	// before the registration is complete api clients can get a 404.
-	apiServerRegistered chan struct{}
 
 	apiPort           int
 	controllerAPIPort int
@@ -171,21 +147,6 @@ func (w *Worker) loop() error {
 		return errors.Annotate(err, "unable to subscribe to details topic")
 	}
 	defer unsub()
-
-	logger.Debugf("waiting for apiserver to finishing registering with mux")
-	// Now wait for the apiserver to finish its registration of handler
-	// endpoints in the mux.
-	for {
-		select {
-		case <-w.catacomb.Dying():
-			// The server isn't yet running.
-			return w.catacomb.ErrDying()
-		case w.url <- "": // Since we aren't yet listening, the url is blank.
-		case <-w.apiServerRegistered:
-			// Now open the ports and start the http server.
-			break
-		}
-	}
 
 	var listener listener
 	if w.controllerAPIPort == 0 {
