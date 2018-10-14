@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juju/collections/set"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
 	"github.com/juju/pubsub"
@@ -40,7 +39,7 @@ type Config struct {
 	Mux                     *apiserverhttp.Mux
 	PrometheusRegisterer    prometheus.Registerer
 	Hub                     *pubsub.StructuredHub
-	ServerAddresses         []string
+	ControllerAPIPort       int
 	UpdateControllerAPIPort func(int) error
 }
 
@@ -69,9 +68,41 @@ func NewWorker(config Config) (*Worker, error) {
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
+
 	w := &Worker{
-		config: config,
-		url:    make(chan string),
+		config:              config,
+		url:                 make(chan string),
+		apiServerRegistered: make(chan struct{}),
+	}
+
+	servingInfo, ok := config.AgentConfig.StateServingInfo()
+	if !ok {
+		return nil, errors.New("missing state serving info")
+	}
+	w.apiPort = servingInfo.APIPort
+	w.controllerAPIPort = servingInfo.ControllerAPIPort
+	// We need to make sure that update the agent config with
+	// the potentially new controller api port from the database
+	// before we start any other workers that need to connect
+	// to the controller over the controller port.
+	w.updateControllerPort(w.config.ControllerAPIPort)
+
+	// TODO (thumper): from 2.5 onwards we should also wait for the
+	// raft transport worker to start. In 2.4 though it is possible that
+	// it isn't running, so we ignore it here.
+
+	// Declare the unsub function so the function closure in the Subscribe
+	// call can use it.
+	var err error
+	var unsub func()
+	unsub, err = config.Hub.Subscribe(apiserver.MuxRegisteredTopic, func(_ string, _ map[string]interface{}) {
+		logger.Infof("told that apiserver is ready")
+		close(w.apiServerRegistered)
+		// Don't need to listen any more.
+		unsub()
+	})
+	if err != nil {
+		return nil, errors.Annotate(err, "unable to subscribe to apiserver registered topic.")
 	}
 	if err := catacomb.Invoke(catacomb.Plan{
 		Site: &w.catacomb,
@@ -87,9 +118,15 @@ type Worker struct {
 	config   Config
 	url      chan string
 
+	// The http server and the api server have a mutual relationship.
+	// This worker runs the http server, but all the end point handling
+	// is done by the apiserver. If this worker starts the Serve method
+	// before the registration is complete api clients can get a 404.
+	apiServerRegistered chan struct{}
+
+	apiPort           int
 	controllerAPIPort int
 
-	gated *gatedListener
 	unsub func()
 }
 
@@ -112,63 +149,64 @@ func (w *Worker) URL() string {
 	}
 }
 
-func (w *Worker) loop() error {
-	apiserverAddresses := set.NewStrings("127.0.0.1", "localhost", "::1")
-	for _, addr := range w.config.ServerAddresses {
-		a, _, _ := net.SplitHostPort(addr)
-		apiserverAddresses.Add(a)
+func (w *Worker) updateControllerPort(port int) {
+	if w.controllerAPIPort != port {
+		// The local cache is out of date, update it.
+		logger.Infof("updating controller API port to %v", port)
+		err := w.config.UpdateControllerAPIPort(port)
+		if err != nil {
+			logger.Errorf("unable to update agent.conf with new controller API port: %v", err)
+		}
+		w.controllerAPIPort = port
 	}
+}
 
-	servingInfo, ok := w.config.AgentConfig.StateServingInfo()
-	if !ok {
-		return errors.New("missing state serving info")
-	}
-	w.controllerAPIPort = servingInfo.ControllerAPIPort
+func (w *Worker) loop() error {
+
 	unsub, err := w.config.Hub.Subscribe(controller.ConfigChanged,
 		func(topic string, data controller.ConfigChangedMessage, err error) {
-			port := data.Config.ControllerAPIPort()
-			if port != w.controllerAPIPort {
-				w.controllerAPIPort = port
-				logger.Infof("updating controller API port to %v", port)
-				err := w.config.UpdateControllerAPIPort(port)
-				if err != nil {
-					logger.Errorf("unable to update agent.conf with new controller API port: %v", err)
-				}
-			}
+			w.updateControllerPort(data.Config.ControllerAPIPort())
 		})
 	if err != nil {
 		return errors.Annotate(err, "unable to subscribe to details topic")
 	}
 	defer unsub()
 
-	listenAddr := net.JoinHostPort("", strconv.Itoa(servingInfo.APIPort))
-	listener, err := net.Listen("tcp", listenAddr)
+	logger.Debugf("waiting for apiserver to finishing registering with mux")
+	// Now wait for the apiserver to finish its registration of handler
+	// endpoints in the mux.
+	for {
+		select {
+		case <-w.catacomb.Dying():
+			// The server isn't yet running.
+			return w.catacomb.ErrDying()
+		case w.url <- "": // Since we aren't yet listening, the url is blank.
+		case <-w.apiServerRegistered:
+			// Now open the ports and start the http server.
+			break
+		}
+	}
+
+	var listener listener
+	if w.controllerAPIPort == 0 {
+		listener, err = w.newSimpleListener()
+	} else {
+		listener, err = w.newDualPortListener()
+	}
 	if err != nil {
 		return errors.Trace(err)
 	}
-	w.gated = &gatedListener{
-		Listener:           listener,
-		apiserverAddresses: apiserverAddresses,
-	}
-	w.unsub, err = w.config.Hub.Subscribe(apiserver.DetailsTopic, w.allowAllConnections)
-	if err != nil {
-		return errors.Annotate(err, "unable to subscribe to details topic")
-	}
-
-	listener = tls.NewListener(w.gated, w.config.TLSConfig)
-	// TODO(axw) rate-limit connections by wrapping listener
 
 	serverLog := log.New(&loggoWrapper{
 		level:  loggo.WARNING,
 		logger: logger,
 	}, "", 0) // no prefix and no flags so log.Logger doesn't add extra prefixes
-	logger.Infof("listening on %q", listener.Addr())
 	server := &http.Server{
 		Handler:   w.config.Mux,
 		TLSConfig: w.config.TLSConfig,
 		ErrorLog:  serverLog,
 	}
-	go server.Serve(listener)
+	go server.Serve(tls.NewListener(listener, w.config.TLSConfig))
 	defer func() {
 		logger.Infof("shutting down HTTP server")
 		// Shutting down the server will also close listener.
@@ -190,7 +228,6 @@ func (w *Worker) loop() error {
 		}()
 	}
 
-	url := fmt.Sprintf("https://%s", listener.Addr())
 	for {
 		select {
 		case <-w.catacomb.Dying():
@@ -198,55 +235,190 @@ func (w *Worker) loop() error {
 			// have finished up.
 			w.config.Mux.Wait()
 			return w.catacomb.ErrDying()
-		case w.url <- url:
+		case w.url <- listener.URL():
 		}
 	}
 }
 
-// Unlock allows connections from all ip addresses not just controllers.
-func (w *Worker) allowAllConnections(_ string, _ map[string]interface{}) {
+type listener interface {
+	net.Listener
+	URL() string
+}
+
+func (w *Worker) newSimpleListener() (listener, error) {
+	listenAddr := net.JoinHostPort("", strconv.Itoa(w.apiPort))
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	logger.Infof("listening on %q", listener.Addr())
+	return &simpleListener{listener}, nil
+}
+
+type simpleListener struct {
+	net.Listener
+}
+
+func (s *simpleListener) URL() string {
+	return fmt.Sprintf("https://%s", s.Addr())
+}
+
+func (w *Worker) newDualPortListener() (listener, error) {
+	readyDelay := time.Second
 	if delay := w.config.AgentConfig.Value("CONTROLLER_READY_DELAY"); delay != "" {
 		d, err := time.ParseDuration(delay)
 		if err != nil {
 			logger.Warningf("agent config file has bad value for CONTROLLER_READY_DELAY duration: %v", err)
 		} else {
-			logger.Infof("waiting for %s before allowing connections", d)
-			<-w.config.Clock.After(d)
+			readyDelay = d
 		}
 	}
-	logger.Infof("unlocking api port for all connections")
-	w.gated.mu.Lock()
-	w.gated.acceptAll = true
-	w.gated.mu.Unlock()
-	w.unsub()
-}
 
-type gatedListener struct {
-	net.Listener
-	apiserverAddresses set.Strings
-	acceptAll          bool
-	mu                 sync.Mutex
-}
+	// Only open the controller port until we have been told that
+	// the controller is ready. This is currently done by the event
+	// from the peergrouper.
+	// TODO (thumper): make the raft worker publish an event when
+	// it knows who the raft master is. This means that this controller
+	// is part of the concensus set, and when it is, is is OK to accept
+	// agent connections. Until that time, accepting an agent connection
+	// would be a bit of a waste of time.
+	listenAddr := net.JoinHostPort("", strconv.Itoa(w.controllerAPIPort))
+	listener, err := net.Listen("tcp", listenAddr)
+	logger.Infof("listening for controller connections on %q", listener.Addr())
+	dual := &dualListener{
+		clock:              w.config.Clock,
+		delay:              readyDelay,
+		apiPort:            w.apiPort,
+		controllerListener: listener,
+		done:               make(chan struct{}),
+		errors:             make(chan error),
+		connections:        make(chan net.Conn),
+	}
+	go dual.accept(listener)
 
-func (g *gatedListener) Accept() (net.Conn, error) {
-	c, err := g.Listener.Accept()
+	dual.unsub, err = w.config.Hub.Subscribe(apiserver.DetailsTopic, dual.openAPIPort)
 	if err != nil {
-		return c, err
+		dual.Close()
+		return nil, errors.Annotate(err, "unable to subscribe to details topic")
 	}
-	remote := c.RemoteAddr()
-	addr, _, _ := net.SplitHostPort(remote.String())
 
-	g.mu.Lock()
-	defer g.mu.Unlock()
+	return dual, err
+}
 
-	if g.acceptAll {
-		return c, nil
+type dualListener struct {
+	clock   clock.Clock
+	delay   time.Duration
+	apiPort int
+
+	controllerListener net.Listener
+	apiListener        net.Listener
+
+	mu     sync.Mutex
+	closer sync.Once
+
+	done        chan struct{}
+	errors      chan error
+	connections chan net.Conn
+
+	unsub func()
+}
+
+func (d *dualListener) accept(listener net.Listener) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			select {
+			case d.errors <- err:
+			case <-d.done:
+				logger.Infof("no longer accepting connections on %s", listener.Addr())
+				return
+			}
+		} else {
+			select {
+			case d.connections <- conn:
+			case <-d.done:
+				conn.Close()
+				logger.Infof("no longer accepting connections on %s", listener.Addr())
+				return
+			}
+		}
 	}
-	if g.apiserverAddresses.Contains(addr) {
-		return c, nil
+}
+
+// Accept implements net.Listener.
+func (d *dualListener) Accept() (net.Conn, error) {
+	select {
+	case <-d.done:
+		return nil, errors.New("listener has been closed")
+	case err := <-d.errors:
+		return nil, errors.Trace(err)
+	case conn := <-d.connections:
+		return conn, nil
 	}
-	logger.Criticalf("deny connection from %s", addr)
-	// c.Close()
-	// return nil, errors.New("controller starting up")
-	return c, nil
+}
+
+// Close implements net.Listener. Closes all the open listeners.
+func (d *dualListener) Close() error {
+	// Only close the channel once.
+	d.closer.Do(func() { close(d.done) })
+	err := d.controllerListener.Close()
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.apiListener != nil {
+		err2 := d.apiListener.Close()
+		if err == nil {
+			err = err2
+		}
+		// If we already have a close error, we don't really care
+		// about this one.
+	}
+	return errors.Trace(err)
+}
+
+// Addr implements net.Listener. If the api port has been opened, we
+// return that, otherwise we return the controller port address.
+func (d *dualListener) Addr() net.Addr {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.apiListener != nil {
+		return d.apiListener.Addr()
+	}
+	return d.controllerListener.Addr()
+}
+
+// URL implements the listener method.
+func (d *dualListener) URL() string {
+	return fmt.Sprintf("https://%s", d.Addr())
+}
+
+// openAPIPort opens the api port and starts accepting connections.
+func (d *dualListener) openAPIPort(_ string, _ map[string]interface{}) {
+	logger.Infof("waiting for %s before allowing api connections", d.delay)
+	<-d.clock.After(d.delay)
+
+	defer d.unsub()
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	// Make sure we haven't been closed already.
+	select {
+	case <-d.done:
+		return
+	default:
+		// We are all good.
+	}
+
+	listenAddr := net.JoinHostPort("", strconv.Itoa(d.apiPort))
+	listener, err := net.Listen("tcp", listenAddr)
+	if err != nil {
+		select {
+		case d.errors <- err:
+		case <-d.done:
+			logger.Errorf("can't open api port: %v, but worker exiting already", err)
+		}
+		return
+	}
+
+	logger.Infof("listening for api connections on %q", listener.Addr())
+	go d.accept(listener)
 }

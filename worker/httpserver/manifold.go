@@ -132,10 +132,11 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
-	addrs, err := systemState.Addresses()
+	controllerConfig, err := systemState.ControllerConfig()
 	if err != nil {
-		return nil, errors.Annotate(err, "unable to get apiserver addresses")
+		return nil, errors.Annotate(err, "unable to get controller config")
 	}
+	controllerAPIPort := controllerConfig.ControllerAPIPort()
 
 	var autocertListener net.Listener
 	if autocertHandler != nil {
@@ -172,7 +173,7 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 		AutocertHandler:         autocertHandler,
 		AutocertListener:        autocertListener,
 		Mux:                     mux,
-		ServerAddresses:         addrs,
+		ControllerAPIPort:       controllerAPIPort,
 		UpdateControllerAPIPort: config.UpdateControllerAPIPort,
 	})
 	if err != nil {

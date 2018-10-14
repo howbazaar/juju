@@ -809,6 +809,11 @@ func (c *configInternal) APIInfo() (*api.Info, bool) {
 	// to other controllers if we can talk locally.
 	if isController {
 		port := servingInfo.APIPort
+		// If the controller has been configured with a controller api port,
+		// we return that instead of the normal api port.
+		if servingInfo.ControllerAPIPort != 0 {
+			port = servingInfo.ControllerAPIPort
+		}
 		// TODO(macgreagoir) IPv6. Ubuntu still always provides IPv4
 		// loopback, and when/if this changes localhost should resolve
 		// to IPv6 loopback in any case (lp:1644009). Review.
