@@ -243,7 +243,7 @@ func (w *Worker) newDualPortListener() (listener, error) {
 	// from the peergrouper.
 	// TODO (thumper): make the raft worker publish an event when
 	// it knows who the raft master is. This means that this controller
-	// is part of the concensus set, and when it is, is is OK to accept
+	// is part of the consensus set, and when it is, is is OK to accept
 	// agent connections. Until that time, accepting an agent connection
 	// would be a bit of a waste of time.
 	listenAddr := net.JoinHostPort("", strconv.Itoa(w.config.ControllerAPIPort))

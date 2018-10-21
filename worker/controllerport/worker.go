@@ -6,6 +6,7 @@ package controllerport
 import (
 	"github.com/juju/errors"
 	"github.com/juju/pubsub"
+	"gopkg.in/juju/worker.v1"
 	"gopkg.in/juju/worker.v1/dependency"
 	"gopkg.in/tomb.v2"
 
@@ -40,7 +41,7 @@ func (config Config) Validate() error {
 }
 
 // NewWorker returns a new API server worker, with the given configuration.
-func NewWorker(config Config) (*Worker, error) {
+func NewWorker(config Config) (worker.Worker, error) {
 	if err := config.Validate(); err != nil {
 		return nil, errors.Trace(err)
 	}
