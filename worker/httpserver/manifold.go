@@ -10,6 +10,7 @@ import (
 
 	"github.com/juju/errors"
 	"github.com/juju/pubsub"
+	"github.com/juju/utils/clock"
 	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/juju/worker.v1"
 	"gopkg.in/juju/worker.v1/dependency"
@@ -27,7 +28,6 @@ import (
 type ManifoldConfig struct {
 	AgentName       string
 	CertWatcherName string
-	ClockName       string
 	HubName         string
 	MuxName         string
 	StateName       string
@@ -39,6 +39,7 @@ type ManifoldConfig struct {
 	APIServerName     string
 	RaftEnabledName   string
 
+	Clock                clock.Clock
 	PrometheusRegisterer prometheus.Registerer
 	Hub                  *pubsub.StructuredHub
 
@@ -53,9 +54,6 @@ func (config ManifoldConfig) Validate() error {
 	}
 	if config.CertWatcherName == "" {
 		return errors.NotValidf("empty CertWatcherName")
-	}
-	if config.ClockName == "" {
-		return errors.NotValidf("empty ClockName")
 	}
 	if config.HubName == "" {
 		return errors.NotValidf("empty HubName")
@@ -74,6 +72,9 @@ func (config ManifoldConfig) Validate() error {
 	}
 	if config.APIServerName == "" {
 		return errors.NotValidf("empty APIServerName")
+	}
+	if config.Clock == nil {
+		return errors.NotValidf("nil Clock")
 	}
 	if config.PrometheusRegisterer == nil {
 		return errors.NotValidf("nil PrometheusRegisterer")
@@ -95,7 +96,7 @@ func Manifold(config ManifoldConfig) dependency.Manifold {
 		Inputs: []string{
 			config.AgentName,
 			config.CertWatcherName,
-			config.ClockName,
+			config.HubName,
 			config.StateName,
 			config.MuxName,
 			config.RaftEnabledName,
@@ -193,7 +194,7 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 
 	w, err := config.NewWorker(Config{
 		AgentConfig:          agent.CurrentConfig(),
-		Clock:                clock,
+		Clock:                config.Clock,
 		PrometheusRegisterer: config.PrometheusRegisterer,
 		Hub:                  hub,
 		TLSConfig:            tlsConfig,

@@ -90,6 +90,7 @@ func Manifold(config ManifoldConfig) dependency.Manifold {
 	return dependency.Manifold{
 		Inputs: []string{
 			config.ClockName,
+			config.ControllerPortName,
 			config.StateName,
 		},
 		Start:  config.start,

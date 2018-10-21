@@ -706,6 +706,7 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 		httpServerName: httpserver.Manifold(httpserver.ManifoldConfig{
 			AgentName:            agentName,
 			CertWatcherName:      certificateWatcherName,
+			Clock:                config.Clock,
 			HubName:              centralHubName,
 			StateName:            stateName,
 			MuxName:              httpServerArgsName,
