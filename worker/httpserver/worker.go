@@ -24,23 +24,23 @@ import (
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/apiserver/apiserverhttp"
 	"github.com/juju/juju/pubsub/apiserver"
-	"github.com/juju/juju/pubsub/controller"
 )
 
 var logger = loggo.GetLogger("juju.worker.httpserver")
 
 // Config is the configuration required for running an API server worker.
 type Config struct {
-	AgentConfig             agent.Config
-	Clock                   clock.Clock
-	TLSConfig               *tls.Config
-	AutocertHandler         http.Handler
-	AutocertListener        net.Listener
-	Mux                     *apiserverhttp.Mux
-	PrometheusRegisterer    prometheus.Registerer
-	Hub                     *pubsub.StructuredHub
-	ControllerAPIPort       int
-	UpdateControllerAPIPort func(int) error
+	AgentConfig          agent.Config
+	Clock                clock.Clock
+	TLSConfig            *tls.Config
+	AutocertHandler      http.Handler
+	AutocertListener     net.Listener
+	Mux                  *apiserverhttp.Mux
+	PrometheusRegisterer prometheus.Registerer
+	Hub                  *pubsub.StructuredHub
+	APIPort              int
+	APIPortOpenDelay     time.Duration
+	ControllerAPIPort    int
 }
 
 // Validate validates the API server configuration.
@@ -74,18 +74,6 @@ func NewWorker(config Config) (*Worker, error) {
 		url:    make(chan string),
 	}
 
-	servingInfo, ok := config.AgentConfig.StateServingInfo()
-	if !ok {
-		return nil, errors.New("missing state serving info")
-	}
-	w.apiPort = servingInfo.APIPort
-	w.controllerAPIPort = servingInfo.ControllerAPIPort
-	// We need to make sure that update the agent config with
-	// the potentially new controller api port from the database
-	// before we start any other workers that need to connect
-	// to the controller over the controller port.
-	w.updateControllerPort(w.config.ControllerAPIPort)
-
 	if err := catacomb.Invoke(catacomb.Plan{
 		Site: &w.catacomb,
 		Work: w.loop,
@@ -99,9 +87,6 @@ type Worker struct {
 	catacomb catacomb.Catacomb
 	config   Config
 	url      chan string
-
-	apiPort           int
-	controllerAPIPort int
 
 	unsub func()
 }
@@ -125,31 +110,10 @@ func (w *Worker) URL() string {
 	}
 }
 
-func (w *Worker) updateControllerPort(port int) {
-	if w.controllerAPIPort != port {
-		// The local cache is out of date, update it.
-		logger.Infof("updating controller API port to %v", port)
-		err := w.config.UpdateControllerAPIPort(port)
-		if err != nil {
-			logger.Errorf("unable to update agent.conf with new controller API port: %v", err)
-		}
-		w.controllerAPIPort = port
-	}
-}
-
 func (w *Worker) loop() error {
-
-	unsub, err := w.config.Hub.Subscribe(controller.ConfigChanged,
-		func(topic string, data controller.ConfigChangedMessage, err error) {
-			w.updateControllerPort(data.Config.ControllerAPIPort())
-		})
-	if err != nil {
-		return errors.Annotate(err, "unable to subscribe to details topic")
-	}
-	defer unsub()
-
+	var err error
 	var listener listener
-	if w.controllerAPIPort == 0 {
+	if w.config.ControllerAPIPort == 0 {
 		listener, err = w.newSimpleListener()
 	} else {
 		listener, err = w.newDualPortListener()
@@ -157,6 +121,7 @@ func (w *Worker) loop() error {
 	if err != nil {
 		return errors.Trace(err)
 	}
+	holdable := newHeldListener(listener, w.config.Clock)
 
 	serverLog := log.New(&loggoWrapper{
 		level:  loggo.WARNING,
@@ -167,11 +132,13 @@ func (w *Worker) loop() error {
 		TLSConfig: w.config.TLSConfig,
 		ErrorLog:  serverLog,
 	}
-	go server.Serve(tls.NewListener(listener, w.config.TLSConfig))
+	go server.Serve(tls.NewListener(holdable, w.config.TLSConfig))
 	defer func() {
 		logger.Infof("shutting down HTTP server")
 		// Shutting down the server will also close listener.
 		err := server.Shutdown(context.Background())
+		// Release the holdable listener to unblock any pending accepts.
+		holdable.release()
 		w.catacomb.Kill(err)
 	}()
 
@@ -192,6 +159,10 @@ func (w *Worker) loop() error {
 	for {
 		select {
 		case <-w.catacomb.Dying():
+			// Stop accepting new connections. This allows the mux
+			// to process all pending requests without having to deal with
+			// new ones.
+			holdable.hold()
 			// Asked to shutdown - make sure we wait until all clients
 			// have finished up.
 			w.config.Mux.Wait()
@@ -201,13 +172,55 @@ func (w *Worker) loop() error {
 	}
 }
 
+type heldListener struct {
+	net.Listener
+	clock clock.Clock
+	mu    sync.Mutex
+	held  bool
+}
+
+func newHeldListener(l net.Listener, c clock.Clock) *heldListener {
+	return &heldListener{
+		Listener: l,
+		clock:    c,
+	}
+}
+
+func (h *heldListener) hold() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.held = true
+}
+
+func (h *heldListener) release() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.held = false
+}
+
+func (h *heldListener) Accept() (net.Conn, error) {
+	// Normally we'd use a channel to signal between goroutines,
+	// but in this case where we want accept to be fast in almost all cases,
+	// but wait when held, we can't have it selecting on a channel outside
+	// of the mutex lock without a race condition. So the safe and slightly
+	// icky method is to wait in a for loop.
+	h.mu.Lock()
+	for h.held {
+		h.mu.Unlock()
+		<-h.clock.After(100 * time.Millisecond)
+		h.mu.Lock()
+	}
+	h.mu.Unlock()
+	return h.Listener.Accept()
+}
+
 type listener interface {
 	net.Listener
 	URL() string
 }
 
 func (w *Worker) newSimpleListener() (listener, error) {
-	listenAddr := net.JoinHostPort("", strconv.Itoa(w.apiPort))
+	listenAddr := net.JoinHostPort("", strconv.Itoa(w.config.APIPort))
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return nil, errors.Trace(err)
@@ -225,16 +238,6 @@ func (s *simpleListener) URL() string {
 }
 
 func (w *Worker) newDualPortListener() (listener, error) {
-	readyDelay := time.Second
-	if delay := w.config.AgentConfig.Value("CONTROLLER_READY_DELAY"); delay != "" {
-		d, err := time.ParseDuration(delay)
-		if err != nil {
-			logger.Warningf("agent config file has bad value for CONTROLLER_READY_DELAY duration: %v", err)
-		} else {
-			readyDelay = d
-		}
-	}
-
 	// Only open the controller port until we have been told that
 	// the controller is ready. This is currently done by the event
 	// from the peergrouper.
@@ -243,13 +246,13 @@ func (w *Worker) newDualPortListener() (listener, error) {
 	// is part of the concensus set, and when it is, is is OK to accept
 	// agent connections. Until that time, accepting an agent connection
 	// would be a bit of a waste of time.
-	listenAddr := net.JoinHostPort("", strconv.Itoa(w.controllerAPIPort))
+	listenAddr := net.JoinHostPort("", strconv.Itoa(w.config.ControllerAPIPort))
 	listener, err := net.Listen("tcp", listenAddr)
 	logger.Infof("listening for controller connections on %q", listener.Addr())
 	dual := &dualListener{
 		clock:              w.config.Clock,
-		delay:              readyDelay,
-		apiPort:            w.apiPort,
+		delay:              w.config.APIPortOpenDelay,
+		apiPort:            w.config.APIPort,
 		controllerListener: listener,
 		done:               make(chan struct{}),
 		errors:             make(chan error),

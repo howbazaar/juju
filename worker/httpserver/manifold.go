@@ -27,18 +27,18 @@ import (
 // ManifoldConfig holds the information necessary to run an HTTP server
 // in a dependency.Engine.
 type ManifoldConfig struct {
-	AgentName       string
-	CertWatcherName string
-	ClockName       string
-	StateName       string
+	AgentName          string
+	CertWatcherName    string
+	ClockName          string
+	ControllerPortName string
+	StateName          string
 
 	PrometheusRegisterer prometheus.Registerer
 	Hub                  *pubsub.StructuredHub
 
-	NewStateAuthenticator   NewStateAuthenticatorFunc
-	NewTLSConfig            func(*state.State, func() *tls.Certificate) (*tls.Config, http.Handler, error)
-	NewWorker               func(Config) (worker.Worker, error)
-	UpdateControllerAPIPort func(int) error
+	NewStateAuthenticator NewStateAuthenticatorFunc
+	NewTLSConfig          func(*state.State, func() *tls.Certificate) (*tls.Config, http.Handler, error)
+	NewWorker             func(Config) (worker.Worker, error)
 }
 
 // Validate validates the manifold configuration.
@@ -51,6 +51,9 @@ func (config ManifoldConfig) Validate() error {
 	}
 	if config.ClockName == "" {
 		return errors.NotValidf("empty ClockName")
+	}
+	if config.ControllerPortName == "" {
+		return errors.NotValidf("empty ControllerPortName")
 	}
 	if config.StateName == "" {
 		return errors.NotValidf("empty StateName")
@@ -70,9 +73,6 @@ func (config ManifoldConfig) Validate() error {
 	if config.NewWorker == nil {
 		return errors.NotValidf("nil NewWorker")
 	}
-	if config.UpdateControllerAPIPort == nil {
-		return errors.NotValidf("nil UpdateControllerAPIPort")
-	}
 	return nil
 }
 
@@ -85,6 +85,7 @@ func Manifold(config ManifoldConfig) dependency.Manifold {
 			config.AgentName,
 			config.CertWatcherName,
 			config.ClockName,
+			config.ControllerPortName,
 			config.StateName,
 		},
 		Start:  config.start,
@@ -136,7 +137,6 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 	if err != nil {
 		return nil, errors.Annotate(err, "unable to get controller config")
 	}
-	controllerAPIPort := controllerConfig.ControllerAPIPort()
 
 	var autocertListener net.Listener
 	if autocertHandler != nil {
@@ -165,16 +165,17 @@ func (config ManifoldConfig) start(context dependency.Context) (_ worker.Worker,
 	}
 
 	w, err := config.NewWorker(Config{
-		AgentConfig:             agent.CurrentConfig(),
-		Clock:                   clock,
-		PrometheusRegisterer:    config.PrometheusRegisterer,
-		Hub:                     config.Hub,
-		TLSConfig:               tlsConfig,
-		AutocertHandler:         autocertHandler,
-		AutocertListener:        autocertListener,
-		Mux:                     mux,
-		ControllerAPIPort:       controllerAPIPort,
-		UpdateControllerAPIPort: config.UpdateControllerAPIPort,
+		AgentConfig:          agent.CurrentConfig(),
+		Clock:                clock,
+		PrometheusRegisterer: config.PrometheusRegisterer,
+		Hub:                  config.Hub,
+		TLSConfig:            tlsConfig,
+		AutocertHandler:      autocertHandler,
+		AutocertListener:     autocertListener,
+		Mux:                  mux,
+		APIPort:              controllerConfig.APIPort(),
+		APIPortOpenDelay:     controllerConfig.APIPortOpenDelay(),
+		ControllerAPIPort:    controllerConfig.ControllerAPIPort(),
 	})
 	if err != nil {
 		close(abort)
