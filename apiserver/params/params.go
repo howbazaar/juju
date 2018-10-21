@@ -732,7 +732,7 @@ type ModifyUserSSHKeys struct {
 // server.
 type StateServingInfo struct {
 	APIPort           int `json:"api-port"`
-	ControllerAPIPort int `json:"api-port,omitempty"`
+	ControllerAPIPort int `json:"controller-api-port,omitempty"`
 	StatePort         int `json:"state-port"`
 	// The controller cert and corresponding private key.
 	Cert       string `json:"cert"`
