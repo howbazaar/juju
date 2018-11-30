@@ -122,6 +122,35 @@ func (s *WorkerSuite) TestInitialModel(c *gc.C) {
 	s.checkModel(c, obtained, expected)
 }
 
+func (s *WorkerSuite) TestModelConfigChange(c *gc.C) {
+	changes := s.captureModelEvents(c)
+	w := s.start(c)
+	// discard initial event
+	s.nextChange(c, changes)
+
+	model, err := s.State.Model()
+	c.Assert(err, jc.ErrorIsNil)
+
+	c.Logf("\nupdating status\n\n")
+
+	// Add a different logging config value.
+	expected := "juju=INFO;missing=DEBUG;unit=DEBUG"
+	err = model.UpdateModelConfig(map[string]interface{}{
+		"logging-config": expected,
+	}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+	s.State.StartSync()
+
+	// Wait for the change.
+	s.nextChange(c, changes)
+
+	controller := s.getController(c, w)
+	cachedModel, err := controller.Model(s.State.ModelUUID())
+	c.Assert(err, jc.ErrorIsNil)
+
+	c.Assert(cachedModel.Config()["logging-config"], gc.Equals, expected)
+}
+
 func (s *WorkerSuite) TestNewModel(c *gc.C) {
 	changes := s.captureModelEvents(c)
 	w := s.start(c)
