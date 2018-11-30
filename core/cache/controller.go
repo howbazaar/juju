@@ -6,9 +6,16 @@ package cache
 import (
 	"sync"
 
+	"github.com/juju/loggo"
+
 	"github.com/juju/errors"
+	"github.com/juju/pubsub"
 	"gopkg.in/tomb.v2"
 )
+
+// We use a package level logger here because the cache is only
+// ever in machine agents, so will never need to be in an alternative
+// logging context.
 
 // Controller is the primary cached object.
 type Controller struct {
@@ -16,6 +23,7 @@ type Controller struct {
 	tomb    tomb.Tomb
 	mu      sync.Mutex
 	models  map[string]*Model
+	hub     *pubsub.SimpleHub
 	// notify func is used primarily for testing, and is called
 	// every time a change has been processed, and the change is
 	// passed as the arg.
@@ -30,6 +38,10 @@ func NewController(changes <-chan interface{}, notify func(interface{})) *Contro
 		changes: changes,
 		models:  make(map[string]*Model),
 		notify:  notify,
+		hub: pubsub.NewSimpleHub(&pubsub.SimpleHubConfig{
+			// TODO: (thumper) add a get child method to loggers.
+			Logger: loggo.GetLogger("juju.core.cache.hub"),
+		}),
 	}
 	c.tomb.Go(c.loop)
 	return c
@@ -99,14 +111,9 @@ func (c *Controller) UpdateModel(ch ModelChange) {
 
 	model, found := c.models[ch.ModelUUID]
 	if !found {
-		c.models[ch.ModelUUID] = &Model{
-			details: ch,
-		}
-	} else {
-		model.mu.Lock()
-		model.details = ch
-		model.mu.Unlock()
+		model = &Model{hub: c.hub}
 	}
+	model.setDetails(ch)
 }
 
 // RemoveModel removes the model from the cache.
