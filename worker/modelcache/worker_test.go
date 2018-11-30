@@ -33,8 +33,16 @@ var _ = gc.Suite(&WorkerSuite{})
 
 func (s *WorkerSuite) SetUpTest(c *gc.C) {
 	s.StateSuite.SetUpTest(c)
+	s.notify = nil
 	s.logger = loggo.GetLogger("test")
 	s.logger.SetLogLevel(loggo.TRACE)
+}
+
+func (s *WorkerSuite) getController(c *gc.C, w worker.Worker) *cache.Controller {
+	var controller *cache.Controller
+	err := modelcache.OutputFunc(w, &controller)
+	c.Assert(err, jc.ErrorIsNil)
+	return controller
 }
 
 func (s *WorkerSuite) start(c *gc.C) worker.Worker {
@@ -67,6 +75,7 @@ func (s *WorkerSuite) captureModelEvents(c *gc.C) <-chan interface{} {
 			// no-op
 		}
 		if send {
+			c.Logf("sending %#v", change)
 			select {
 			case events <- change:
 			case <-time.After(testing.LongWait):
@@ -77,74 +86,104 @@ func (s *WorkerSuite) captureModelEvents(c *gc.C) <-chan interface{} {
 	return events
 }
 
-func (s *WorkerSuite) TestInitialModel(c *gc.C) {
-	changes := s.captureModelEvents(c)
-	s.start(c)
+func (s *WorkerSuite) checkModel(c *gc.C, obtained interface{}, model *state.Model) {
+	change, ok := obtained.(cache.ModelChange)
+	c.Assert(ok, jc.IsTrue)
 
+	c.Check(change.ModelUUID, gc.Equals, model.UUID())
+	c.Check(change.Name, gc.Equals, model.Name())
+	c.Check(change.Life, gc.Equals, life.Value(model.Life().String()))
+	c.Check(change.Owner, gc.Equals, model.Owner().Name())
+	cfg, err := model.Config()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(change.Config, jc.DeepEquals, cfg.AllAttrs())
+	status, err := model.Status()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(change.Status, jc.DeepEquals, status)
+}
+
+func (s *WorkerSuite) nextChange(c *gc.C, changes <-chan interface{}) interface{} {
 	var obtained interface{}
 	select {
 	case obtained = <-changes:
 	case <-time.After(testing.LongWait):
 		c.Fatalf("no change")
 	}
+	return obtained
+}
 
-	change, ok := obtained.(cache.ModelChange)
-	c.Assert(ok, jc.IsTrue)
+func (s *WorkerSuite) TestInitialModel(c *gc.C) {
+	changes := s.captureModelEvents(c)
+	s.start(c)
+
+	obtained := s.nextChange(c, changes)
 	expected, err := s.State.Model()
 	c.Assert(err, jc.ErrorIsNil)
-	c.Check(change.ModelUUID, gc.Equals, s.State.ModelUUID())
-	c.Check(change.Name, gc.Equals, expected.Name())
-	c.Check(change.Life, gc.Equals, life.Value(expected.Life().String()))
-	c.Check(change.Owner, gc.Equals, expected.Owner().Name())
-	cfg, err := expected.Config()
-	c.Assert(err, jc.ErrorIsNil)
-	c.Check(change.Config, jc.DeepEquals, cfg.AllAttrs())
-	status, err := expected.Status()
-	c.Assert(err, jc.ErrorIsNil)
-	c.Check(change.Status, jc.DeepEquals, status)
+	s.checkModel(c, obtained, expected)
 }
 
 func (s *WorkerSuite) TestNewModel(c *gc.C) {
-	s.start(c)
+	changes := s.captureModelEvents(c)
+	w := s.start(c)
+	// grab and discard the event for the initial model
+	s.nextChange(c, changes)
 
-	model := s.Factory.MakeModel(c, nil)
+	newState := s.Factory.MakeModel(c, nil)
 	s.State.StartSync()
-	defer model.Close()
+	defer newState.Close()
 
-	<-time.After(time.Second)
-	c.Fatalf("oops")
+	obtained := s.nextChange(c, changes)
+	expected, err := newState.Model()
+	c.Assert(err, jc.ErrorIsNil)
+	s.checkModel(c, obtained, expected)
+
+	controller := s.getController(c, w)
+	c.Assert(controller.ModelUUIDs(), gc.HasLen, 2)
 }
 
 func (s *WorkerSuite) TestRemovedModel(c *gc.C) {
-	s.start(c)
+	changes := s.captureModelEvents(c)
+	w := s.start(c)
+
+	// grab and discard the event for the initial model
+	s.nextChange(c, changes)
 
 	st := s.Factory.MakeModel(c, nil)
 	s.State.StartSync()
 	defer st.Close()
 
+	// grab and discard the event for the new model
+	s.nextChange(c, changes)
+
 	model, err := st.Model()
 	c.Assert(err, jc.ErrorIsNil)
-
-	c.Logf("\nDestroy\n\n")
-
 	err = model.Destroy(state.DestroyModelParams{})
 	c.Assert(err, jc.ErrorIsNil)
 	s.State.StartSync()
 
-	c.Logf("\nProcessDyingModel\n\n")
+	// grab and discard the event for the new model
+	obtained := s.nextChange(c, changes)
+	modelChange, ok := obtained.(cache.ModelChange)
+	c.Assert(ok, jc.IsTrue)
+	c.Assert(modelChange.Life, gc.Equals, life.Value("dying"))
 
 	err = st.ProcessDyingModel()
 	c.Assert(err, jc.ErrorIsNil)
 	s.State.StartSync()
 
-	c.Logf("\nRemoveDyingModel\n\n")
-
 	err = st.RemoveDyingModel()
 	c.Assert(err, jc.ErrorIsNil)
 	s.State.StartSync()
 
-	<-time.After(time.Second)
-	c.Fatalf("oops")
+	obtained = s.nextChange(c, changes)
+
+	change, ok := obtained.(cache.RemoveModel)
+	c.Assert(ok, jc.IsTrue)
+	c.Check(change.ModelUUID, gc.Equals, model.UUID())
+
+	// Controller just has the system state again.
+	controller := s.getController(c, w)
+	c.Assert(controller.ModelUUIDs(), jc.SameContents, []string{s.State.ModelUUID()})
 }
 
 type noopRegisterer struct {

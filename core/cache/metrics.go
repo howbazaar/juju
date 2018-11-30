@@ -135,7 +135,7 @@ func (c *Collector) updateMetrics() {
 	logger.Tracef("updating cache metrics")
 	defer logger.Tracef("updated cache metrics")
 
-	modelUUIDs := c.controller.modelUUIDs()
+	modelUUIDs := c.controller.ModelUUIDs()
 	// if err != nil {
 	// 	logger.Debugf("error getting models: %v", err)
 	// 	c.scrapeErrors.Inc()

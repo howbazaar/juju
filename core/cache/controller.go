@@ -54,7 +54,8 @@ func (c *Controller) loop() error {
 	}
 }
 
-func (c *Controller) modelUUIDs() []string {
+// ModelUUIDs returns the UUIDs of the models in the cache.
+func (c *Controller) ModelUUIDs() []string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	result := make([]string, 0, len(c.models))
