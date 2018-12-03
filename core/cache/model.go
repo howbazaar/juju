@@ -76,7 +76,7 @@ func (m *Model) Config() map[string]interface{} {
 // If keys are specified, the watcher is only signals a change when
 // those keys change values. If no keys are specified, any change in the
 // config will trigger the watcher.
-func (m *Model) WatchConfig(keys ...string) watcher.NotifyWatcher {
+func (m *Model) WatchConfig(keys ...string) *modelConfigWatcher {
 	// We use a single entry buffered channel for the changes.
 	// This allows the config changed handler to send a value when there
 	// is a change, but if that value hasn't been consumed before the
@@ -197,4 +197,10 @@ func (w *modelConfigWatcher) Kill() {
 // Wait is part of the worker.Worker interface.
 func (w *modelConfigWatcher) Wait() error {
 	return w.tomb.Wait()
+}
+
+// Stop is currently required by the Resources wrapper in the apiserver.
+func (w *modelConfigWatcher) Stop() error {
+	w.Kill()
+	return w.Wait()
 }
