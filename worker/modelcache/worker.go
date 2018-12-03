@@ -4,9 +4,6 @@
 package modelcache
 
 import (
-	"sync"
-	"time"
-
 	"github.com/juju/errors"
 	"github.com/kr/pretty"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,10 +29,26 @@ type Config struct {
 	Notify func(interface{})
 }
 
+// Validate ensures all the necessary values are specified
+func (c *Config) Validate() error {
+	if c.Logger == nil {
+		return errors.NotValidf("missing logger")
+	}
+	if c.StatePool == nil {
+		return errors.NotValidf("missing state pool")
+	}
+	if c.PrometheusRegisterer == nil {
+		return errors.NotValidf("missing prometheus registerer")
+	}
+	if c.Cleanup == nil {
+		return errors.NotValidf("missing cleanup func")
+	}
+	return nil
+}
+
 type cacheWorker struct {
 	config     Config
 	catacomb   catacomb.Catacomb
-	mu         sync.Mutex
 	controller *cache.Controller
 	changes    chan interface{}
 }
@@ -43,63 +56,36 @@ type cacheWorker struct {
 // NewWorker creates a new cacheWorker, and starts an
 // all model watcher.
 func NewWorker(config Config) (worker.Worker, error) {
+	if err := config.Validate(); err != nil {
+		return nil, errors.Trace(err)
+	}
 	w := &cacheWorker{
 		config:  config,
 		changes: make(chan interface{}),
 	}
-	// In order to ensure that the cache.Controller has been created
-	// before the NewWorker function returns, we create a channel that the
-	// loop method closes once the controller has been created.
-	started := make(chan struct{})
+	w.controller = cache.NewController(w.changes, config.Notify)
 	if err := catacomb.Invoke(catacomb.Plan{
 		Site: &w.catacomb,
-		Work: func() error {
-			return w.loop(started)
-		},
+		Work: w.loop,
+		Init: []worker.Worker{w.controller},
 	}); err != nil {
 		return nil, errors.Trace(err)
-	}
-	select {
-	case <-started:
-	case <-time.After(5 * time.Second):
-		// The loop should have started, so if it hasn't, it is likely
-		// that it hit an error.
-		err := w.catacomb.Err()
-		if err != nil {
-			return nil, err
-		}
-		// If it hasn't stopped already, we're going to kill it.
-		err = errors.New("start took too long")
-		w.catacomb.Kill(err)
-		return nil, err
 	}
 	return w, nil
 }
 
-func (c *cacheWorker) getController() *cache.Controller {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.controller
+// Report returns information that is used in the dependency engine report.
+func (c *cacheWorker) Report() map[string]interface{} {
+	return c.controller.Report()
 }
 
-func (c *cacheWorker) loop(started chan struct{}) error {
+func (c *cacheWorker) loop() error {
 	defer c.config.Cleanup()
 	pool := c.config.StatePool
 	allWatcher := pool.SystemState().WatchAllModels(pool)
 	defer allWatcher.Stop()
 
-	controller := cache.NewController(c.changes, c.config.Notify)
-	if err := c.catacomb.Add(controller); err != nil {
-		return errors.Trace(err)
-	}
-	c.mu.Lock()
-	c.controller = controller
-	c.mu.Unlock()
-
-	// We have now set the controller, so started enough.
-	close(started)
-
-	collector := cache.NewMetricsCollector(controller)
+	collector := cache.NewMetricsCollector(c.controller)
 	c.config.PrometheusRegisterer.Register(collector)
 	defer c.config.PrometheusRegisterer.Unregister(collector)
 

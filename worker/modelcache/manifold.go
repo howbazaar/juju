@@ -36,13 +36,13 @@ func (config ManifoldConfig) Validate() error {
 		return errors.NotValidf("empty StateName")
 	}
 	if config.Logger == nil {
-		return errors.NotValidf("empty Logger")
+		return errors.NotValidf("missing Logger")
 	}
 	if config.PrometheusRegisterer == nil {
-		return errors.NotValidf("nil PrometheusRegisterer")
+		return errors.NotValidf("missing PrometheusRegisterer")
 	}
 	if config.NewWorker == nil {
-		return errors.NotValidf("nil NewWorker")
+		return errors.NotValidf("missing NewWorker func")
 	}
 	return nil
 }
@@ -102,7 +102,7 @@ func outputFunc(in worker.Worker, out interface{}) error {
 
 	switch outPointer := out.(type) {
 	case **cache.Controller:
-		*outPointer = inWorker.getController()
+		*outPointer = inWorker.controller
 	default:
 		return errors.Errorf("out should be *cache.Controller; got %T", out)
 	}

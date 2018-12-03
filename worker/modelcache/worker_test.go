@@ -6,6 +6,7 @@ package modelcache_test
 import (
 	"time"
 
+	"github.com/juju/errors"
 	"github.com/juju/loggo"
 	jc "github.com/juju/testing/checkers"
 	"github.com/prometheus/client_golang/prometheus"
@@ -19,13 +20,12 @@ import (
 	statetesting "github.com/juju/juju/state/testing"
 	"github.com/juju/juju/testing"
 	"github.com/juju/juju/worker/modelcache"
-	workerstate "github.com/juju/juju/worker/state"
 )
 
 type WorkerSuite struct {
 	statetesting.StateSuite
 	logger loggo.Logger
-	config workerstate.ManifoldConfig
+	config modelcache.Config
 	notify func(interface{})
 }
 
@@ -36,6 +36,40 @@ func (s *WorkerSuite) SetUpTest(c *gc.C) {
 	s.notify = nil
 	s.logger = loggo.GetLogger("test")
 	s.logger.SetLogLevel(loggo.TRACE)
+	s.config = modelcache.Config{
+		Logger:               s.logger,
+		StatePool:            s.StatePool,
+		PrometheusRegisterer: noopRegisterer{},
+		Cleanup:              func() {},
+	}
+}
+
+func (s *WorkerSuite) TestConfigMissingLogger(c *gc.C) {
+	s.config.Logger = nil
+	err := s.config.Validate()
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+	c.Check(err, gc.ErrorMatches, "missing logger not valid")
+}
+
+func (s *WorkerSuite) TestConfigMissingStatePool(c *gc.C) {
+	s.config.StatePool = nil
+	err := s.config.Validate()
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+	c.Check(err, gc.ErrorMatches, "missing state pool not valid")
+}
+
+func (s *WorkerSuite) TestConfigMissingRegisterer(c *gc.C) {
+	s.config.PrometheusRegisterer = nil
+	err := s.config.Validate()
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+	c.Check(err, gc.ErrorMatches, "missing prometheus registerer not valid")
+}
+
+func (s *WorkerSuite) TestConfigMissingCleanup(c *gc.C) {
+	s.config.Cleanup = nil
+	err := s.config.Validate()
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+	c.Check(err, gc.ErrorMatches, "missing cleanup func not valid")
 }
 
 func (s *WorkerSuite) getController(c *gc.C, w worker.Worker) *cache.Controller {
@@ -46,14 +80,8 @@ func (s *WorkerSuite) getController(c *gc.C, w worker.Worker) *cache.Controller 
 }
 
 func (s *WorkerSuite) start(c *gc.C) worker.Worker {
-	config := modelcache.Config{
-		Logger:               s.logger,
-		StatePool:            s.StatePool,
-		PrometheusRegisterer: noopRegisterer{},
-		Cleanup:              func() {},
-		Notify:               s.notify,
-	}
-
+	config := s.config
+	config.Notify = s.notify
 	w, err := modelcache.NewWorker(config)
 	c.Assert(err, jc.ErrorIsNil)
 	s.AddCleanup(func(c *gc.C) {
