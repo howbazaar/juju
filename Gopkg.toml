@@ -43,7 +43,7 @@
 
 [[constraint]]
   name = "github.com/coreos/go-systemd"
-  revision = "7b2428fec40033549c68f54e26e89e7ca9a9ce31"
+  revision = "ec90daa870dd15120bd957a3f0ca9f01fede2b27"
 
 [[constraint]]
   revision = "36ee7e946282a3fb1cfecd476ddc9b35d8847e42"
@@ -296,10 +296,6 @@
 [[constraint]]
   name = "github.com/juju/errors"
   revision = "22422dad46e14561a0854ad42497a75af9b61909"
-
-[[constraint]]
-  name = "github.com/juju/go-oracle-cloud"
-  revision = "932a8cea00a1cd5cba3829a672c823955db674ae"
 
 [[constraint]]
   name = "github.com/juju/httprequest"
