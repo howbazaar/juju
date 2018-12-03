@@ -43,6 +43,47 @@ var (
 	logger = loggo.GetLogger("juju.core.cache")
 )
 
+// ControllerGauges holds the prometheus gauges for ever increasing
+// values used by the controller.
+type ControllerGauges struct {
+	ModelConfigReads   prometheus.Gauge
+	ModelHashCacheHit  prometheus.Gauge
+	ModelHashCacheMiss prometheus.Gauge
+}
+
+func createControllerGauges() *ControllerGauges {
+	return &ControllerGauges{
+		ModelConfigReads: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: metricsNamespace,
+				Name:      "model_config_reads",
+				Help:      "The number of times the model config is read.",
+			},
+		),
+		ModelHashCacheHit: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: metricsNamespace,
+				Name:      "model_hash_cache_hit",
+				Help:      "The number of times the model config change hash was determined using the cached value.",
+			},
+		),
+		ModelHashCacheMiss: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: metricsNamespace,
+				Name:      "model_hash_cache_miss",
+				Help:      "The number of times the model config change hash was generated.",
+			},
+		),
+	}
+}
+
+// Collect is part of the prometheus.Collector interface.
+func (c *ControllerGauges) Collect(ch chan<- prometheus.Metric) {
+	c.ModelConfigReads.Collect(ch)
+	c.ModelHashCacheHit.Collect(ch)
+	c.ModelHashCacheMiss.Collect(ch)
+}
+
 // Collector is a prometheus.Collector that collects metrics about
 // the Juju global state.
 type Collector struct {
@@ -126,6 +167,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	c.updateMetrics()
 
+	c.controller.metrics.Collect(ch)
 	c.machines.Collect(ch)
 	c.models.Collect(ch)
 	c.users.Collect(ch)

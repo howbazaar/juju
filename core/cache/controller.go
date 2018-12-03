@@ -24,6 +24,7 @@ type Controller struct {
 	mu      sync.Mutex
 	models  map[string]*Model
 	hub     *pubsub.SimpleHub
+	metrics *ControllerGauges
 	// notify func is used primarily for testing, and is called
 	// every time a change has been processed, and the change is
 	// passed as the arg.
@@ -42,6 +43,7 @@ func NewController(changes <-chan interface{}, notify func(interface{})) *Contro
 			// TODO: (thumper) add a get child method to loggers.
 			Logger: loggo.GetLogger("juju.core.cache.hub"),
 		}),
+		metrics: createControllerGauges(),
 	}
 	c.tomb.Go(c.loop)
 	return c
@@ -64,6 +66,17 @@ func (c *Controller) loop() error {
 			}
 		}
 	}
+}
+
+// Report returns information that is used in the dependency engine report.
+func (c *Controller) Report() map[string]interface{} {
+	result := make(map[string]interface{})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for uuid, model := range c.models {
+		result[uuid] = model.Report()
+	}
+	return result
 }
 
 // ModelUUIDs returns the UUIDs of the models in the cache.
@@ -89,7 +102,6 @@ func (c *Controller) Wait() error {
 
 // Model return the model for the specified UUID.
 // If the model isn't found, a NotFoundError is returned.
-// A copy of the model is returned.
 func (c *Controller) Model(uuid string) (*Model, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -97,10 +109,7 @@ func (c *Controller) Model(uuid string) (*Model, error) {
 	if !found {
 		return nil, errors.NotFoundf("model %q", uuid)
 	}
-	result := &Model{
-		details: model.details,
-	}
-	return result, nil
+	return model, nil
 }
 
 // UpdateModel will add or update the model details as
@@ -111,7 +120,8 @@ func (c *Controller) UpdateModel(ch ModelChange) {
 
 	model, found := c.models[ch.ModelUUID]
 	if !found {
-		model = &Model{hub: c.hub}
+		model = newModel(c.metrics, c.hub)
+		c.models[ch.ModelUUID] = model
 	}
 	model.setDetails(ch)
 }
