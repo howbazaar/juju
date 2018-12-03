@@ -13,7 +13,6 @@ import (
 	"github.com/juju/juju/core/cache"
 	"github.com/juju/juju/core/life"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/core/watcher/watchertest"
 )
 
 type ModelSuite struct {
@@ -60,26 +59,17 @@ func (s *ModelSuite) TestModelConfigIncrementsReadCount(c *gc.C) {
 func (s *ModelSuite) TestConfigWatcherStops(c *gc.C) {
 	m := s.newModel(modelChange)
 	w := m.WatchConfig()
-	wc := watchertest.NewNotifyWatcherC(c, w, nil)
+	wc := NewNotifyWatcherC(c, w)
 	// Sends initial event.
 	wc.AssertOneChange()
 	wc.AssertStops()
-
-	change := modelChange
-	change.Config = map[string]interface{}{
-		"key": "changed",
-	}
-
-	m.SetDetails(change)
-	// No change to the stopped watcher.
-	wc.AssertNoChange()
 }
 
 func (s *ModelSuite) TestConfigWatcherChange(c *gc.C) {
 	m := s.newModel(modelChange)
 	w := m.WatchConfig()
 	defer workertest.CleanKill(c, w)
-	wc := watchertest.NewNotifyWatcherC(c, w, nil)
+	wc := NewNotifyWatcherC(c, w)
 	// Sends initial event.
 	wc.AssertOneChange()
 
@@ -101,7 +91,7 @@ func (s *ModelSuite) TestConfigWatcherOneValue(c *gc.C) {
 	m := s.newModel(modelChange)
 	w := m.WatchConfig("key")
 	defer workertest.CleanKill(c, w)
-	wc := watchertest.NewNotifyWatcherC(c, w, nil)
+	wc := NewNotifyWatcherC(c, w)
 	// Sends initial event.
 	wc.AssertOneChange()
 
@@ -119,7 +109,7 @@ func (s *ModelSuite) TestConfigWatcherOneValueOtherChange(c *gc.C) {
 	m := s.newModel(modelChange)
 	w := m.WatchConfig("key")
 	defer workertest.CleanKill(c, w)
-	wc := watchertest.NewNotifyWatcherC(c, w, nil)
+	wc := NewNotifyWatcherC(c, w)
 	// Sends initial event.
 	wc.AssertOneChange()
 

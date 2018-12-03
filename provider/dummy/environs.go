@@ -31,6 +31,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/juju/juju/core/cache/cachetest"
+
 	"github.com/juju/clock"
 	"github.com/juju/errors"
 	"github.com/juju/jsonschema"
@@ -58,6 +60,7 @@ import (
 	"github.com/juju/juju/cloudconfig/instancecfg"
 	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/auditlog"
+	"github.com/juju/juju/core/cache"
 	corelease "github.com/juju/juju/core/lease"
 	"github.com/juju/juju/core/presence"
 	"github.com/juju/juju/core/status"
@@ -265,6 +268,9 @@ type environState struct {
 	presence       *fakePresence
 	leaseManager   *lease.Manager
 	creator        string
+
+	controller        *cache.Controller
+	controllerChanges chan interface{}
 }
 
 // environ represents a client's connection to a given environment's
@@ -361,9 +367,11 @@ func (state *environState) destroyLocked() {
 	apiServer := state.apiServer
 	apiStatePool := state.apiStatePool
 	leaseManager := state.leaseManager
+	controller := state.controller
 	state.apiServer = nil
 	state.apiStatePool = nil
 	state.apiState = nil
+	state.controller = nil
 	state.leaseManager = nil
 	state.bootstrapped = false
 	state.hub = nil
@@ -374,6 +382,12 @@ func (state *environState) destroyLocked() {
 	// shutting down.
 	state.mu.Unlock()
 	defer state.mu.Lock()
+
+	if controller != nil {
+		if err := worker.Stop(controller); err != nil {
+			panic(err)
+		}
+	}
 
 	if apiServer != nil {
 		logger.Debugf("stopping apiServer")
@@ -440,14 +454,23 @@ func (e *environ) GetHubInAPIServer() *pubsub.StructuredHub {
 	return st.hub
 }
 
-// GetLeaseManagerInAPIServer returns the lease manager used by the
-// API server.
+// GetLeaseManagerInAPIServer returns the channel used to update the
+// cache.Controller used by the API server
 func (e *environ) GetLeaseManagerInAPIServer() corelease.Manager {
 	st, err := e.state()
 	if err != nil {
 		panic(err)
 	}
 	return st.leaseManager
+}
+
+// GetHubInAPIServer returns the central hub used by the API server.
+func (e *environ) GetControllerChangesChannel() chan<- interface{} {
+	st, err := e.state()
+	if err != nil {
+		panic(err)
+	}
+	return st.controllerChanges
 }
 
 // newState creates the state for a new environment with the given name.
@@ -892,9 +915,17 @@ func (e *environ) Bootstrap(ctx environs.BootstrapContext, callCtx context.Provi
 			if err != nil {
 				return errors.Trace(err)
 			}
+			estate.controllerChanges = make(chan interface{})
+			estate.controller = cache.NewController(estate.controllerChanges, nil)
+			change, err := cachetest.ModelChangeFromStateErr(st)
+			if err != nil {
+				return errors.Trace(err)
+			}
+			estate.controllerChanges <- change
 
 			estate.apiServer, err = apiserver.NewServer(apiserver.ServerConfig{
 				StatePool:      statePool,
+				Controller:     estate.controller,
 				Authenticator:  stateAuthenticator,
 				Clock:          clock.WallClock,
 				GetAuditConfig: func() auditlog.Config { return auditlog.Config{} },

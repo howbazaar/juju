@@ -4,6 +4,7 @@
 package cachetest
 
 import (
+	"github.com/juju/errors"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
 
@@ -20,8 +21,26 @@ func ModelChangeFromState(c *gc.C, st *state.State) cache.ModelChange {
 	return ModelChange(c, model)
 }
 
+// ModelChangeFromStateErr returns a ModelChange representing the current
+// model for the state object. May return an error.
+func ModelChangeFromStateErr(st *state.State) (cache.ModelChange, error) {
+	model, err := st.Model()
+	if err != nil {
+		return cache.ModelChange{}, errors.Trace(err)
+	}
+	return ModelChangeErr(model)
+}
+
 // ModelChange returns a ModelChange representing the current state of the model.
 func ModelChange(c *gc.C, model *state.Model) cache.ModelChange {
+	change, err := ModelChangeErr(model)
+	c.Assert(err, jc.ErrorIsNil)
+	return change
+}
+
+// ModelChangeErr returns a ModelChange representing the current state of the model.
+// May return an error if unable to load config or status.
+func ModelChangeErr(model *state.Model) (cache.ModelChange, error) {
 	change := cache.ModelChange{
 		ModelUUID: model.UUID(),
 		Name:      model.Name(),
@@ -29,10 +48,14 @@ func ModelChange(c *gc.C, model *state.Model) cache.ModelChange {
 		Owner:     model.Owner().Name(),
 	}
 	config, err := model.Config()
-	c.Assert(err, jc.ErrorIsNil)
+	if err != nil {
+		return cache.ModelChange{}, errors.Trace(err)
+	}
 	change.Config = config.AllAttrs()
 	status, err := model.Status()
-	c.Assert(err, jc.ErrorIsNil)
+	if err != nil {
+		return cache.ModelChange{}, errors.Trace(err)
+	}
 	change.Status = status
-	return change
+	return change, nil
 }

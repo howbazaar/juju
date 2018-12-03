@@ -10,7 +10,6 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"github.com/juju/juju/core/watcher"
 	"github.com/juju/pubsub"
 )
 
@@ -163,6 +162,11 @@ type modelConfigWatcher struct {
 	hash    string
 	tomb    tomb.Tomb
 	changes chan struct{}
+	// We can't send down a closed channel, so protect the sending
+	// with a mutex and bool. Since you can't really even ask a channel
+	// if it is closed.
+	closed bool
+	mu     sync.Mutex
 }
 
 func (w *modelConfigWatcher) configChanged(topic string, value interface{}) {
@@ -176,6 +180,12 @@ func (w *modelConfigWatcher) configChanged(topic string, value interface{}) {
 		return
 	}
 	// Let the listener know.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.closed {
+		return
+	}
+
 	select {
 	case w.changes <- struct{}{}:
 	default:
@@ -185,12 +195,16 @@ func (w *modelConfigWatcher) configChanged(topic string, value interface{}) {
 
 // Changes is part of the core watcher definition.
 // The changes channel is never closed.
-func (w *modelConfigWatcher) Changes() watcher.NotifyChannel {
+func (w *modelConfigWatcher) Changes() <-chan struct{} {
 	return w.changes
 }
 
 // Kill is part of the worker.Worker interface.
 func (w *modelConfigWatcher) Kill() {
+	w.mu.Lock()
+	w.closed = true
+	close(w.changes)
+	w.mu.Unlock()
 	w.tomb.Kill(nil)
 }
 
