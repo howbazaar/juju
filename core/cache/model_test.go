@@ -93,7 +93,7 @@ func (s *ModelSuite) TestConfigWatcherChange(c *gc.C) {
 
 	// The hash is generated each time we set the details.
 	c.Check(testutil.ToFloat64(s.gauges.ModelHashCacheMiss), gc.Equals, float64(2))
-	// The value is retrived from the cache when the watcher is created and notified.
+	// The value is retrieved from the cache when the watcher is created and notified.
 	c.Check(testutil.ToFloat64(s.gauges.ModelHashCacheHit), gc.Equals, float64(2))
 }
 
