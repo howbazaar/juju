@@ -18,8 +18,6 @@ import (
 	apiservertesting "github.com/juju/juju/apiserver/testing"
 	"github.com/juju/juju/core/cache"
 	"github.com/juju/juju/core/cache/cachetest"
-	"github.com/juju/juju/core/watcher"
-	"github.com/juju/juju/core/watcher/watchertest"
 	"github.com/juju/juju/state"
 	statetesting "github.com/juju/juju/state/testing"
 	"github.com/juju/juju/testing"
@@ -171,15 +169,9 @@ func (s *loggerSuite) TestWatchLoggingConfig(c *gc.C) {
 	resource := s.resources.Get(results.Results[0].NotifyWatcherId)
 	c.Assert(resource, gc.NotNil)
 
-	w := resource.(watcher.NotifyWatcher)
-	wc := watchertest.NewNotifyWatcherC(c, w, nil)
-	wc.AssertNoChange()
-
-	newLoggingConfig := "<root>=WARN;juju.log.test=DEBUG;unit=INFO"
-	s.setLoggingConfig(c, newLoggingConfig)
-
-	wc.AssertOneChange()
-	wc.AssertStops()
+	_, ok := resource.(cache.NotifyWatcher)
+	c.Assert(ok, jc.IsTrue)
+	// The watcher implementation is tested in the cache package.
 }
 
 func (s *loggerSuite) TestWatchLoggingConfigRefusesWrongAgent(c *gc.C) {
