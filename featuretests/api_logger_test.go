@@ -4,10 +4,6 @@
 package featuretests
 
 import (
-	"time"
-
-	"github.com/juju/juju/core/cache/cachetest"
-	"github.com/juju/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
 
@@ -42,13 +38,13 @@ func (s *apiLoggerSuite) TestWatchLoggingConfig(c *gc.C) {
 	// Initial event.
 	wc.AssertOneChange()
 
-	change := cachetest.ModelChangeFromState(c, s.State)
-	change.Config["logging-config"] = "juju=INFO;test=TRACE"
-	select {
-	case s.ControllerChangesChannel <- change:
-	case <-time.After(testing.LongWait):
-		c.Fatalf("unable to sent change to controller")
-	}
+	model, err := s.State.Model()
+	c.Assert(err, jc.ErrorIsNil)
+	err = model.UpdateModelConfig(
+		map[string]interface{}{
+			"logging-config": "juju=INFO;test=TRACE",
+		}, nil)
+	c.Assert(err, jc.ErrorIsNil)
 
 	wc.AssertOneChange()
 	wc.AssertStops()
