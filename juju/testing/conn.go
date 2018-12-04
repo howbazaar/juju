@@ -34,6 +34,7 @@ import (
 	"github.com/juju/juju/cloud"
 	"github.com/juju/juju/cmd/modelcmd"
 	"github.com/juju/juju/controller"
+	"github.com/juju/juju/core/cache"
 	"github.com/juju/juju/core/lease"
 	"github.com/juju/juju/core/lxdprofile"
 	"github.com/juju/juju/core/presence"
@@ -98,26 +99,26 @@ type JujuConnSuite struct {
 	DefaultToolsStorageDir string
 	DefaultToolsStorage    storage.Storage
 
-	ControllerConfig         controller.Config
-	State                    *state.State
-	StatePool                *state.StatePool
-	Model                    *state.Model
-	Environ                  environs.Environ
-	APIState                 api.Connection
-	apiStates                []api.Connection // additional api.Connections to close on teardown
-	ControllerStore          jujuclient.ClientStore
-	BackingState             *state.State          // The State being used by the API server
-	BackingStatePool         *state.StatePool      // The StatePool being used by the API server
-	Hub                      *pubsub.StructuredHub // The central hub being used by the API server.
-	ControllerChangesChannel chan<- interface{}    // The channel used to update the cache.Controller used by the API server
-	LeaseManager             lease.Manager         // The lease manager being used by the API server.
-	RootDir                  string                // The faked-up root directory.
-	LogDir                   string
-	oldHome                  string
-	oldJujuXDGDataHome       string
-	DummyConfig              testing.Attrs
-	Factory                  *factory.Factory
-	ProviderCallContext      context.ProviderCallContext
+	ControllerConfig    controller.Config
+	State               *state.State
+	StatePool           *state.StatePool
+	Model               *state.Model
+	Environ             environs.Environ
+	APIState            api.Connection
+	apiStates           []api.Connection // additional api.Connections to close on teardown
+	ControllerStore     jujuclient.ClientStore
+	BackingState        *state.State          // The State being used by the API server.
+	BackingStatePool    *state.StatePool      // The StatePool being used by the API server.
+	Hub                 *pubsub.StructuredHub // The central hub being used by the API server.
+	Controller          *cache.Controller     // The cache.Controller used by the API server.
+	LeaseManager        lease.Manager         // The lease manager being used by the API server.
+	RootDir             string                // The faked-up root directory.
+	LogDir              string
+	oldHome             string
+	oldJujuXDGDataHome  string
+	DummyConfig         testing.Attrs
+	Factory             *factory.Factory
+	ProviderCallContext context.ProviderCallContext
 
 	txnSyncNotify     chan struct{}
 	modelWatcherIdle  chan string
@@ -494,7 +495,7 @@ func (s *JujuConnSuite) setUpConn(c *gc.C) {
 	s.BackingStatePool = getStater.GetStatePoolInAPIServer()
 	s.Hub = getStater.GetHubInAPIServer()
 	s.LeaseManager = getStater.GetLeaseManagerInAPIServer()
-	s.ControllerChangesChannel = getStater.GetControllerChangesChannel()
+	s.Controller = getStater.GetController()
 
 	s.StatePool, err = newState(s.ControllerConfig.ControllerUUID(), environ, s.MongoInfo(c))
 	c.Assert(err, jc.ErrorIsNil)
@@ -725,7 +726,7 @@ type GetStater interface {
 	GetStatePoolInAPIServer() *state.StatePool
 	GetHubInAPIServer() *pubsub.StructuredHub
 	GetLeaseManagerInAPIServer() lease.Manager
-	GetControllerChangesChannel() chan<- interface{}
+	GetController() *cache.Controller
 }
 
 func (s *JujuConnSuite) tearDownConn(c *gc.C) {

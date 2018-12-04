@@ -56,7 +56,7 @@ func Manifold(config ManifoldConfig) dependency.Manifold {
 			config.StateName,
 		},
 		Start:  config.start,
-		Output: outputFunc,
+		Output: OutputFunc,
 	}
 }
 
@@ -93,8 +93,8 @@ func (config ManifoldConfig) start(context dependency.Context) (worker.Worker, e
 	return w, nil
 }
 
-// outputFunc extracts a *cache.Controller from a *cacheWorker.
-func outputFunc(in worker.Worker, out interface{}) error {
+// OutputFunc extracts a *cache.Controller from a *cacheWorker.
+func OutputFunc(in worker.Worker, out interface{}) error {
 	inWorker, _ := in.(*cacheWorker)
 	if inWorker == nil {
 		return errors.Errorf("in should be a %T; got %T", inWorker, in)

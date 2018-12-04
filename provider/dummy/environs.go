@@ -31,7 +31,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/juju/juju/core/cache/cachetest"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/juju/clock"
 	"github.com/juju/errors"
@@ -81,6 +81,7 @@ import (
 	"github.com/juju/juju/testing"
 	coretools "github.com/juju/juju/tools"
 	"github.com/juju/juju/worker/lease"
+	"github.com/juju/juju/worker/modelcache"
 )
 
 var logger = loggo.GetLogger("juju.provider.dummy")
@@ -269,8 +270,8 @@ type environState struct {
 	leaseManager   *lease.Manager
 	creator        string
 
-	controller        *cache.Controller
-	controllerChanges chan interface{}
+	modelCacheWorker worker.Worker
+	controller       *cache.Controller
 }
 
 // environ represents a client's connection to a given environment's
@@ -367,7 +368,7 @@ func (state *environState) destroyLocked() {
 	apiServer := state.apiServer
 	apiStatePool := state.apiStatePool
 	leaseManager := state.leaseManager
-	controller := state.controller
+	modelCacheWorker := state.modelCacheWorker
 	state.apiServer = nil
 	state.apiStatePool = nil
 	state.apiState = nil
@@ -375,6 +376,7 @@ func (state *environState) destroyLocked() {
 	state.leaseManager = nil
 	state.bootstrapped = false
 	state.hub = nil
+	state.modelCacheWorker = nil
 
 	// Release the lock while we close resources. In particular,
 	// we must not hold the lock while the API server is being
@@ -383,8 +385,8 @@ func (state *environState) destroyLocked() {
 	state.mu.Unlock()
 	defer state.mu.Lock()
 
-	if controller != nil {
-		if err := worker.Stop(controller); err != nil {
+	if modelCacheWorker != nil {
+		if err := worker.Stop(modelCacheWorker); err != nil {
 			panic(err)
 		}
 	}
@@ -464,13 +466,13 @@ func (e *environ) GetLeaseManagerInAPIServer() corelease.Manager {
 	return st.leaseManager
 }
 
-// GetHubInAPIServer returns the central hub used by the API server.
-func (e *environ) GetControllerChangesChannel() chan<- interface{} {
+// GetController returns the cache.Controller used by the API server.
+func (e *environ) GetController() *cache.Controller {
 	st, err := e.state()
 	if err != nil {
 		panic(err)
 	}
-	return st.controllerChanges
+	return st.controller
 }
 
 // newState creates the state for a new environment with the given name.
@@ -915,13 +917,22 @@ func (e *environ) Bootstrap(ctx environs.BootstrapContext, callCtx context.Provi
 			if err != nil {
 				return errors.Trace(err)
 			}
-			estate.controllerChanges = make(chan interface{})
-			estate.controller = cache.NewController(estate.controllerChanges, nil)
-			change, err := cachetest.ModelChangeFromStateErr(st)
+
+			modelCache, err := modelcache.NewWorker(modelcache.Config{
+				Logger:               loggo.GetLogger("dummy"),
+				StatePool:            statePool,
+				PrometheusRegisterer: noopRegisterer{},
+				Cleanup:              func() {},
+			})
 			if err != nil {
 				return errors.Trace(err)
 			}
-			estate.controllerChanges <- change
+			estate.modelCacheWorker = modelCache
+			err = modelcache.OutputFunc(modelCache, &estate.controller)
+			if err != nil {
+				worker.Stop(modelCache)
+				return errors.Trace(err)
+			}
 
 			estate.apiServer, err = apiserver.NewServer(apiserver.ServerConfig{
 				StatePool:      statePool,
@@ -1947,4 +1958,16 @@ func (f *fakePresence) AgentStatus(agent string) (presence.Status, error) {
 		return status, nil
 	}
 	return presence.Alive, nil
+}
+
+type noopRegisterer struct {
+	prometheus.Registerer
+}
+
+func (noopRegisterer) Register(prometheus.Collector) error {
+	return nil
+}
+
+func (noopRegisterer) Unregister(prometheus.Collector) bool {
+	return true
 }
