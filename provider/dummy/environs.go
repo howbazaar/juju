@@ -385,15 +385,17 @@ func (state *environState) destroyLocked() {
 	state.mu.Unlock()
 	defer state.mu.Lock()
 
-	if modelCacheWorker != nil {
-		if err := worker.Stop(modelCacheWorker); err != nil {
+	// The apiServer depends on the modelCache, so stop the apiserver first.
+	if apiServer != nil {
+		logger.Debugf("stopping apiServer")
+		if err := apiServer.Stop(); err != nil && mongoAlive() {
 			panic(err)
 		}
 	}
 
-	if apiServer != nil {
-		logger.Debugf("stopping apiServer")
-		if err := apiServer.Stop(); err != nil && mongoAlive() {
+	if modelCacheWorker != nil {
+		logger.Debugf("stopping modelCache worker")
+		if err := worker.Stop(modelCacheWorker); err != nil {
 			panic(err)
 		}
 	}

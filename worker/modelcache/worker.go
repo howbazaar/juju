@@ -4,6 +4,8 @@
 package modelcache
 
 import (
+	"sync"
+
 	"github.com/juju/errors"
 	"github.com/kr/pretty"
 	"github.com/prometheus/client_golang/prometheus"
@@ -51,6 +53,8 @@ type cacheWorker struct {
 	catacomb   catacomb.Catacomb
 	controller *cache.Controller
 	changes    chan interface{}
+	watcher    *state.Multiwatcher
+	mu         sync.Mutex
 }
 
 // NewWorker creates a new cacheWorker, and starts an
@@ -82,30 +86,67 @@ func (c *cacheWorker) Report() map[string]interface{} {
 func (c *cacheWorker) loop() error {
 	defer c.config.Cleanup()
 	pool := c.config.StatePool
-	allWatcher := pool.SystemState().WatchAllModels(pool)
-	defer allWatcher.Stop()
+
+	allWatcherStarts := prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Namespace: "juju_worker_modelcache",
+			Name:      "watcher_starts",
+			Help:      "The number of times the all model watcher has been started.",
+		},
+	)
 
 	collector := cache.NewMetricsCollector(c.controller)
 	c.config.PrometheusRegisterer.Register(collector)
+	c.config.PrometheusRegisterer.Register(allWatcherStarts)
+	defer c.config.PrometheusRegisterer.Unregister(allWatcherStarts)
 	defer c.config.PrometheusRegisterer.Unregister(collector)
 
 	watcherChanges := make(chan []multiwatcher.Delta)
+	// This worker needs to be robust with respect to the multiwatcher
+	// errors. If we get an unexpected error we should get a new allWatcher.
+	// We don't want a weird error in the multiwatcher taking down the apiserver,
+	// which is what would happen if this worker errors out.
+	// We do need to consider cache invalidation for multiwatcher entities
+	// that may be in our cache but when we restart the watcher, they aren't there.
+	// Cache invalidtion is a hard problem, but here at least we should perhaps
+	// be able to do some form of mark and sweep. When we create a new watcher
+	// we should mark entities in the controller, and when we are done with the
+	// first call to Next(), which returns the state of the world, we can issue
+	// a sweep to remove anything that wasn't updated since the Mark.
+	// TODO: This is left for upcoming work.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	defer func() {
+		c.mu.Lock()
+		c.watcher.Stop()
+		c.mu.Unlock()
+		wg.Wait()
+	}()
 	go func() {
+		// Ensure we don't leave the main loop until the goroutine is done.
+		defer wg.Done()
 		for {
-			deltas, err := allWatcher.Next()
-			if err != nil {
-				if errors.Cause(err) == state.ErrStopped {
-					return
-				} else {
-					c.catacomb.Kill(err)
-					return
-				}
-			}
+			c.mu.Lock()
 			select {
 			case <-c.catacomb.Dying():
+				c.mu.Unlock()
 				return
-			case watcherChanges <- deltas:
+			default:
+				// Continue through.
 			}
+			allWatcherStarts.Inc()
+			watcher := pool.SystemState().WatchAllModels(pool)
+			c.watcher = watcher
+			c.mu.Unlock()
+
+			err := c.processWatcher(watcher, watcherChanges)
+			if err == nil {
+				// We are done, so exit
+				watcher.Stop()
+				return
+			}
+			c.config.Logger.Errorf("watcher error, %v, getting new watcher", err)
+			watcher.Stop()
 		}
 	}()
 
@@ -126,6 +167,24 @@ func (c *cacheWorker) loop() error {
 					}
 				}
 			}
+		}
+	}
+}
+
+func (c *cacheWorker) processWatcher(w *state.Multiwatcher, watcherChanges chan<- []multiwatcher.Delta) error {
+	for {
+		deltas, err := w.Next()
+		if err != nil {
+			if errors.Cause(err) == state.ErrStopped {
+				return nil
+			} else {
+				return errors.Trace(err)
+			}
+		}
+		select {
+		case <-c.catacomb.Dying():
+			return nil
+		case watcherChanges <- deltas:
 		}
 	}
 }
