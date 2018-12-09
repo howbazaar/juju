@@ -44,6 +44,7 @@ import (
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils/arch"
 	"github.com/juju/version"
+	"github.com/prometheus/client_golang/prometheus"
 	gc "gopkg.in/check.v1"
 	"gopkg.in/juju/charm.v6"
 	"gopkg.in/juju/environschema.v1"
@@ -1000,12 +1001,13 @@ func leaseManager(controllerUUID string, st *state.State) (*lease.Manager, error
 	)
 	dummyStore := newLeaseStore(clock.WallClock, target, state.LeaseTrapdoorFunc())
 	return lease.NewManager(lease.ManagerConfig{
-		Secretary:  lease.SecretaryFinder(controllerUUID),
-		Store:      dummyStore,
-		Logger:     loggo.GetLogger("juju.worker.lease.dummy"),
-		Clock:      clock.WallClock,
-		MaxSleep:   time.Minute,
-		EntityUUID: controllerUUID,
+		Secretary:            lease.SecretaryFinder(controllerUUID),
+		Store:                dummyStore,
+		Logger:               loggo.GetLogger("juju.worker.lease.dummy"),
+		Clock:                clock.WallClock,
+		MaxSleep:             time.Minute,
+		EntityUUID:           controllerUUID,
+		PrometheusRegisterer: noopRegisterer{},
 	})
 }
 
