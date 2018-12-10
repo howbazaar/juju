@@ -79,7 +79,12 @@ func (s *loggerSuite) SetUpTest(c *gc.C) {
 	}
 
 	s.changes = make(chan interface{})
-	s.controller = cache.NewController(s.changes, notify)
+	controller, err := cache.NewController(cache.ControllerConfig{
+		Changes: s.changes,
+		Notify:  notify,
+	})
+	c.Assert(err, jc.ErrorIsNil)
+	s.controller = controller
 	s.AddCleanup(func(c *gc.C) { workertest.CleanKill(c, s.controller) })
 	// Add the current model to the controller.
 	s.change = cachetest.ModelChangeFromState(c, s.State)

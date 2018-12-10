@@ -39,6 +39,7 @@ func DefaultServerConfig(c *gc.C) apiserver.ServerConfig {
 		Tag:             names.NewMachineTag("0"),
 		LogDir:          c.MkDir(),
 		Hub:             hub,
+		Controller:      &cache.Controller{}, // Not useful for anything except providing a default.
 		Presence:        presence.New(clock.WallClock),
 		LeaseManager:    &lease.Manager{},
 		NewObserver:     func() observer.Observer { return &fakeobserver.Instance{} },
