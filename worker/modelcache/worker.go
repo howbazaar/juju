@@ -67,7 +67,15 @@ func NewWorker(config Config) (worker.Worker, error) {
 		config:  config,
 		changes: make(chan interface{}),
 	}
-	w.controller = cache.NewController(w.changes, config.Notify)
+	controller, err := cache.NewController(
+		cache.ControllerConfig{
+			Changes: w.changes,
+			Notify:  config.Notify,
+		})
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	w.controller = controller
 	if err := catacomb.Invoke(catacomb.Plan{
 		Site: &w.catacomb,
 		Work: w.loop,

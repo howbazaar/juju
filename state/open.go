@@ -209,7 +209,6 @@ func (st *State) stopWorkers() (err error) {
 		if err := worker.Stop(st.workers); err != nil {
 			return errors.Annotatef(err, "failed to stop workers")
 		}
-		st.workers = nil
 	}
 	return nil
 }
