@@ -1,4 +1,4 @@
-// Copyright 2017 Canonical Ltd.
+// Copyright 2018 Canonical Ltd.
 // Licensed under the AGPLv3, see LICENCE file for details.
 package cache_test
 
@@ -6,6 +6,7 @@ import (
 	"github.com/juju/loggo"
 	"github.com/juju/pubsub"
 	"github.com/juju/testing"
+	jc "github.com/juju/testing/checkers"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	gc "gopkg.in/check.v1"
 	"gopkg.in/juju/worker.v1/workertest"
@@ -40,6 +41,22 @@ func (s *ModelSuite) newModel(details cache.ModelChange) *cache.Model {
 	m := cache.NewModel(s.gauges, s.hub)
 	m.SetDetails(details)
 	return m
+}
+
+func (s *ModelSuite) TestReport(c *gc.C) {
+	m := s.newModel(modelChange)
+	c.Assert(m.Report(), jc.DeepEquals, map[string]interface{}{
+		"name": "model-owner/test-model",
+		"life": life.Value("alive"),
+	})
+}
+
+func (s *ModelSuite) TestConfig(c *gc.C) {
+	m := s.newModel(modelChange)
+	c.Assert(m.Config(), jc.DeepEquals, map[string]interface{}{
+		"key":     "value",
+		"another": "foo",
+	})
 }
 
 func (s *ModelSuite) TestNewModelGeneratesHash(c *gc.C) {

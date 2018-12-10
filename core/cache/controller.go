@@ -17,28 +17,46 @@ import (
 // ever in machine agents, so will never need to be in an alternative
 // logging context.
 
+// ControllerConfig is a simple config value struct for the controller.
+type ControllerConfig struct {
+	// Changes from the even source come over this channel.
+	// The changes channel must be non-nil.
+	Changes <-chan interface{}
+
+	// Notify is a callback function used primariy for testing, and is
+	// called by the controller main processing loop after processing a change.
+	// The change processed is passed in as the arg to notify.
+	Notify func(interface{})
+}
+
+// Validate ensures the controller has the right values to be created.
+func (c *ControllerConfig) Validate() error {
+	if c.Changes == nil {
+		return errors.NotValidf("nil Changes")
+	}
+	return nil
+}
+
 // Controller is the primary cached object.
 type Controller struct {
-	changes <-chan interface{}
+	config  ControllerConfig
 	tomb    tomb.Tomb
 	mu      sync.Mutex
 	models  map[string]*Model
 	hub     *pubsub.SimpleHub
 	metrics *ControllerGauges
-	// notify func is used primarily for testing, and is called
-	// every time a change has been processed, and the change is
-	// passed as the arg.
-	notify func(interface{})
 }
 
 // NewController creates a new cached controller intance.
 // The changes channel is what is used to supply the cache with the changes
 // in order for the cache to be kept up to date.
-func NewController(changes <-chan interface{}, notify func(interface{})) *Controller {
+func NewController(config ControllerConfig) (*Controller, error) {
+	if err := config.Validate(); err != nil {
+		return nil, errors.Trace(err)
+	}
 	c := &Controller{
-		changes: changes,
-		models:  make(map[string]*Model),
-		notify:  notify,
+		config: config,
+		models: make(map[string]*Model),
 		hub: pubsub.NewSimpleHub(&pubsub.SimpleHubConfig{
 			// TODO: (thumper) add a get child method to loggers.
 			Logger: loggo.GetLogger("juju.core.cache.hub"),
@@ -46,7 +64,7 @@ func NewController(changes <-chan interface{}, notify func(interface{})) *Contro
 		metrics: createControllerGauges(),
 	}
 	c.tomb.Go(c.loop)
-	return c
+	return c, nil
 }
 
 func (c *Controller) loop() error {
@@ -54,15 +72,15 @@ func (c *Controller) loop() error {
 		select {
 		case <-c.tomb.Dying():
 			return nil
-		case change := <-c.changes:
+		case change := <-c.config.Changes:
 			switch ch := change.(type) {
 			case ModelChange:
-				c.UpdateModel(ch)
+				c.updateModel(ch)
 			case RemoveModel:
-				c.RemoveModel(ch)
+				c.removeModel(ch)
 			}
-			if c.notify != nil {
-				c.notify(change)
+			if c.config.Notify != nil {
+				c.config.Notify(change)
 			}
 		}
 	}
@@ -112,9 +130,9 @@ func (c *Controller) Model(uuid string) (*Model, error) {
 	return model, nil
 }
 
-// UpdateModel will add or update the model details as
+// updateModel will add or update the model details as
 // described in the ModelChange.
-func (c *Controller) UpdateModel(ch ModelChange) {
+func (c *Controller) updateModel(ch ModelChange) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -126,8 +144,8 @@ func (c *Controller) UpdateModel(ch ModelChange) {
 	model.setDetails(ch)
 }
 
-// RemoveModel removes the model from the cache.
-func (c *Controller) RemoveModel(ch RemoveModel) {
+// removeModel removes the model from the cache.
+func (c *Controller) removeModel(ch RemoveModel) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.models, ch.ModelUUID)

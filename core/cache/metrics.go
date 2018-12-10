@@ -178,46 +178,11 @@ func (c *Collector) updateMetrics() {
 	defer logger.Tracef("updated cache metrics")
 
 	modelUUIDs := c.controller.ModelUUIDs()
-	// if err != nil {
-	// 	logger.Debugf("error getting models: %v", err)
-	// 	c.scrapeErrors.Inc()
-	// }
 	for _, m := range modelUUIDs {
 		c.updateModelMetrics(m)
 	}
 
-	// TODO(axw) AllUsers only returns *local* users. We do not have User
-	// records for external users. To obtain external users, we will need
-	// to get all of the controller and model-level access documents.
-	// controllerTag := st.ControllerTag()
-	// localUsers, err := st.AllUsers()
-	// if err != nil {
-	// 	logger.Debugf("error getting local users: %v", err)
-	// 	c.scrapeErrors.Inc()
-	// 	localUsers = nil
-	// }
-	// for _, u := range localUsers {
-	// 	userTag := u.UserTag()
-	// 	access, err := st.UserAccess(userTag, controllerTag)
-	// 	if err != nil && !errors.IsNotFound(err) {
-	// 		logger.Debugf("error getting controller user access: %v", err)
-	// 		c.scrapeErrors.Inc()
-	// 		continue
-	// 	}
-	// 	var deleted, disabled string
-	// 	if u.IsDeleted() {
-	// 		deleted = "true"
-	// 	}
-	// 	if u.IsDisabled() {
-	// 		disabled = "true"
-	// 	}
-	// 	c.users.With(prometheus.Labels{
-	// 		controllerAccessLabel: string(access.Access),
-	// 		deletedLabel:          deleted,
-	// 		disabledLabel:         disabled,
-	// 		domainLabel:           userTag.Domain(),
-	// 	}).Inc()
-	// }
+	// TODO: add user metrics.
 }
 
 func (c *Collector) updateModelMetrics(modelUUID string) {
@@ -226,64 +191,8 @@ func (c *Collector) updateModelMetrics(modelUUID string) {
 		logger.Debugf("error getting model: %v", err)
 		return
 	}
-	// XXX: for now
-	_ = model
 
-	// modelStatus, err := model.Status()
-	// if err != nil {
-	// 	if errors.IsNotFound(err) {
-	// 		return // Model removed
-	// 	}
-	// 	c.scrapeErrors.Inc()
-	// 	logger.Debugf("error getting model status: %v", err)
-	// 	return
-	// }
-
-	// modelTag := model.ModelTag()
-	// st, err := c.pool.Get(modelTag.Id())
-	// if err != nil {
-	// 	if errors.IsNotFound(err) {
-	// 		return // Model removed
-	// 	}
-	// 	c.scrapeErrors.Inc()
-	// 	logger.Debugf("error getting model state: %v", err)
-	// 	return
-	// }
-	// defer st.Release()
-
-	// machines, err := st.AllMachines()
-	// if err != nil {
-	// 	c.scrapeErrors.Inc()
-	// 	logger.Debugf("error getting machines: %v", err)
-	// 	machines = nil
-	// }
-	// for _, m := range machines {
-	// 	agentStatus, err := m.Status()
-	// 	if errors.IsNotFound(err) {
-	// 		continue // Machine removed
-	// 	} else if err != nil {
-	// 		c.scrapeErrors.Inc()
-	// 		logger.Debugf("error getting machine status: %v", err)
-	// 		continue
-	// 	}
-
-	// 	machineStatus, err := m.InstanceStatus()
-	// 	if errors.IsNotFound(err) {
-	// 		continue // Machine removed
-	// 	} else if errors.IsNotProvisioned(err) {
-	// 		machineStatus.Status = ""
-	// 	} else if err != nil {
-	// 		c.scrapeErrors.Inc()
-	// 		logger.Debugf("error getting machine status: %v", err)
-	// 		continue
-	// 	}
-
-	// 	c.machines.With(prometheus.Labels{
-	// 		agentStatusLabel:   string(agentStatus.Status),
-	// 		lifeLabel:          m.Life().String(),
-	// 		machineStatusLabel: string(machineStatus.Status),
-	// 	}).Inc()
-	// }
+	// TODO: add machines, applications and units.
 
 	c.models.With(prometheus.Labels{
 		lifeLabel:   string(model.details.Life),
