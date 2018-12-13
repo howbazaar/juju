@@ -19,7 +19,7 @@ import (
 	apiservertesting "github.com/juju/juju/apiserver/testing"
 	"github.com/juju/juju/caas"
 	k8s "github.com/juju/juju/caas/kubernetes/provider"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	coreapplication "github.com/juju/juju/core/application"
 	jujutesting "github.com/juju/juju/juju/testing"
 	"github.com/juju/juju/state"

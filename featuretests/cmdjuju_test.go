@@ -13,7 +13,7 @@ import (
 	"github.com/juju/juju/caas"
 	"github.com/juju/juju/cmd/juju/application"
 	"github.com/juju/juju/cmd/juju/model"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	coreapplication "github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/instance"
 	jujutesting "github.com/juju/juju/juju/testing"

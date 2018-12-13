@@ -13,7 +13,7 @@ import (
 	"github.com/lxc/lxd/shared/osarch"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/container/lxd"
 	lxdtesting "github.com/juju/juju/container/lxd/testing"
 	"github.com/juju/juju/environs/tags"

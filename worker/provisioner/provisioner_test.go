@@ -26,7 +26,7 @@ import (
 	apiprovisioner "github.com/juju/juju/api/provisioner"
 	apiserverprovisioner "github.com/juju/juju/apiserver/facades/agent/provisioner"
 	"github.com/juju/juju/apiserver/params"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/controller/authentication"
 	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"

@@ -22,7 +22,7 @@ import (
 	"github.com/juju/juju/cloud"
 	"github.com/juju/juju/cloudconfig/instancecfg"
 	"github.com/juju/juju/cloudconfig/providerinit"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/container/lxd"
 	containerlxd "github.com/juju/juju/container/lxd"
 	"github.com/juju/juju/core/instance"

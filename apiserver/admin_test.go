@@ -32,7 +32,7 @@ import (
 	"github.com/juju/juju/apiserver/params"
 	servertesting "github.com/juju/juju/apiserver/testing"
 	"github.com/juju/juju/apiserver/testserver"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	corecontroller "github.com/juju/juju/controller"
 	"github.com/juju/juju/core/auditlog"
 	jujutesting "github.com/juju/juju/juju/testing"

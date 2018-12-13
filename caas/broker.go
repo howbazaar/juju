@@ -10,7 +10,7 @@ import (
 	"github.com/juju/version"
 	core "k8s.io/api/core/v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/devices"
 	"github.com/juju/juju/core/status"

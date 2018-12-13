@@ -15,7 +15,7 @@ import (
 	"gopkg.in/juju/environschema.v1"
 
 	"github.com/juju/juju/apiserver/facades/client/application"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	coreapplication "github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/juju/testing"
