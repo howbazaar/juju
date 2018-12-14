@@ -243,6 +243,40 @@ func (s *WorkerSuite) TestRemovedModel(c *gc.C) {
 	c.Assert(controller.ModelUUIDs(), jc.SameContents, []string{s.State.ModelUUID()})
 }
 
+func (s *WorkerSuite) captureApplicationEvents(c *gc.C) <-chan interface{} {
+	events := make(chan interface{})
+	s.notify = func(change interface{}) {
+		send := false
+		switch change.(type) {
+		case cache.ApplicationChange:
+			send = true
+		case cache.RemoveApplication:
+			send = true
+		default:
+			// no-op
+		}
+		if send {
+			c.Logf("sending %#v", change)
+			select {
+			case events <- change:
+			case <-time.After(testing.LongWait):
+				c.Fatalf("change not processed by test")
+			}
+		}
+	}
+	return events
+}
+
+func (s *WorkerSuite) TestRemovedModel(c *gc.C) {
+	changes := s.captureApplicationEvents(c)
+	w := s.start(c)
+
+	app := s.Factory.MakeApplication(c, nil)
+
+	obtained := s.nextChange(c, changes)
+
+}
+
 type noopRegisterer struct {
 	prometheus.Registerer
 }

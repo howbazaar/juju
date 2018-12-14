@@ -78,6 +78,10 @@ func (c *Controller) loop() error {
 				c.updateModel(ch)
 			case RemoveModel:
 				c.removeModel(ch)
+			case ApplicationChange:
+				c.updateApplication(ch)
+			case RemoveApplication:
+				c.removeApplication(ch)
 			}
 			if c.config.Notify != nil {
 				c.config.Notify(change)
@@ -146,6 +150,26 @@ func (c *Controller) updateModel(ch ModelChange) {
 
 // removeModel removes the model from the cache.
 func (c *Controller) removeModel(ch RemoveModel) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.models, ch.ModelUUID)
+}
+
+// updateApplication will...
+func (c *Controller) updateApplication(ch ApplicationChange) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	model, found := c.models[ch.ModelUUID]
+	if !found {
+		model = newModel(c.metrics, c.hub)
+		c.models[ch.ModelUUID] = model
+	}
+	model.setDetails(ch)
+}
+
+// removeApplication removes...
+func (c *Controller) removeApplication(ch RemoveApplication) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.models, ch.ModelUUID)

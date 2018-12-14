@@ -12,44 +12,27 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-const modelConfigChange = "model-config-change"
-
-func newModel(metrics *ControllerGauges, hub *pubsub.SimpleHub) *Model {
-	m := &Model{
+func newApplication(metrics *ControllerGauges, hub *pubsub.SimpleHub) *Application {
+	m := &Application{
 		metrics: metrics,
 		hub:     hub,
 	}
 	return m
 }
 
-// Model is a cached model in the controller. The model is kept up to
-// date with changes flowing into the cached controller.
-type Model struct {
+// Application represents an application in a model.
+type Application struct {
+	// Link to model?
 	metrics *ControllerGauges
 	hub     *pubsub.SimpleHub
 	mu      sync.Mutex
 
-	details    ModelChange
+	details    ApplicationChange
 	configHash string
 	hashCache  *modelConfigHashCache
 }
 
-// Report returns information that is used in the dependency engine report.
-func (m *Model) Report() map[string]interface{} {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return map[string]interface{}{
-		"name": m.details.Owner + "/" + m.details.Name,
-		"life": m.details.Life,
-	}
-}
-
-// modelTopic prefixes the topic with the model UUID.
-func (m *Model) modelTopic(topic string) string {
-	return m.details.ModelUUID + ":" + topic
-}
-
-func (m *Model) setDetails(details ModelChange) {
+func (m *Application) setDetails(details ApplicationChange) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.details = details
@@ -58,15 +41,15 @@ func (m *Model) setDetails(details ModelChange) {
 	if configHash != m.configHash {
 		m.configHash = configHash
 		m.hashCache = hashCache
-		m.hub.Publish(m.modelTopic(modelConfigChange), hashCache)
+		// TODO: publish config change...
 	}
 }
 
-// Config returns the current model config.
-func (m *Model) Config() map[string]interface{} {
+// Config returns the current application config.
+func (m *Model) Application() map[string]interface{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.metrics.ModelConfigReads.Inc()
+	// App config reads?
 	return m.details.Config
 }
 
