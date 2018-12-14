@@ -35,8 +35,8 @@ import (
 	"github.com/juju/juju/apiserver/params"
 	jujucharmstore "github.com/juju/juju/charmstore"
 	"github.com/juju/juju/cmd/modelcmd"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/watcher"
-	"github.com/juju/juju/instance"
 	jujutesting "github.com/juju/juju/juju/testing"
 	"github.com/juju/juju/jujuclient"
 	"github.com/juju/juju/network"
@@ -340,7 +340,7 @@ func (s *UpgradeCharmErrorsStateSuite) TestSwitchAndPathFails(c *gc.C) {
 func (s *UpgradeCharmErrorsStateSuite) TestInvalidRevision(c *gc.C) {
 	s.deployApplication(c)
 	err := runUpgradeCharm(c, "riak", "--revision=blah")
-	c.Assert(err, gc.ErrorMatches, `invalid value "blah" for flag --revision: strconv.(ParseInt|Atoi): parsing "blah": invalid syntax`)
+	c.Assert(err, gc.ErrorMatches, `invalid value "blah" for option --revision: strconv.(ParseInt|Atoi): parsing "blah": invalid syntax`)
 }
 
 type BaseUpgradeCharmStateSuite struct{}

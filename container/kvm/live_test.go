@@ -16,13 +16,13 @@ import (
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju/cloudconfig/instancecfg"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/container"
 	"github.com/juju/juju/container/kvm"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/imagemetadata"
-	"github.com/juju/juju/instance"
+	"github.com/juju/juju/environs/instances"
 	jujutesting "github.com/juju/juju/juju/testing"
 	coretesting "github.com/juju/juju/testing"
 	"github.com/juju/juju/tools"
@@ -90,7 +90,7 @@ func shutdownMachines(manager container.Manager) func(*gc.C) {
 	}
 }
 
-func createContainer(c *gc.C, manager container.Manager, machineId string) instance.Instance {
+func createContainer(c *gc.C, manager container.Manager, machineId string) instances.Instance {
 	machineNonce := "fake-nonce"
 	apiInfo := jujutesting.FakeAPIInfo(machineId)
 	instanceConfig, err := instancecfg.NewInstanceConfig(coretesting.ControllerTag, machineId, machineNonce, imagemetadata.ReleasedStream, "quantal", apiInfo)

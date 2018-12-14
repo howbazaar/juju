@@ -11,11 +11,11 @@ import (
 	"gopkg.in/juju/names.v2"
 
 	"github.com/juju/juju/apiserver/common/storagecommon"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/application"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/crossmodel"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/state"
 )

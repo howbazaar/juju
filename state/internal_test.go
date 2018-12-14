@@ -15,11 +15,10 @@ import (
 	"gopkg.in/juju/names.v2"
 
 	"github.com/juju/juju/cloud"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/storage"
 	"github.com/juju/juju/storage/provider"
 	"github.com/juju/juju/storage/provider/dummy"
@@ -139,7 +138,7 @@ func (internalStatePolicy) ConstraintsValidator(context.ProviderCallContext) (co
 	return nil, errors.NotImplementedf("ConstraintsValidator")
 }
 
-func (internalStatePolicy) InstanceDistributor() (instance.Distributor, error) {
+func (internalStatePolicy) InstanceDistributor() (context.Distributor, error) {
 	return nil, errors.NotImplementedf("InstanceDistributor")
 }
 

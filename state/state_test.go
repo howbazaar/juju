@@ -31,11 +31,11 @@ import (
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/cloud"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/application"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs/config"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/mongo"
 	"github.com/juju/juju/mongo/mongotest"
 	"github.com/juju/juju/network"

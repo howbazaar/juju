@@ -8,11 +8,10 @@ import (
 	"github.com/juju/schema"
 	"gopkg.in/juju/environschema.v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/storage"
 )
 
@@ -21,7 +20,7 @@ type MockPolicy struct {
 	GetConfigValidator            func() (config.Validator, error)
 	GetProviderConfigSchemaSource func() (config.ConfigSchemaSource, error)
 	GetConstraintsValidator       func() (constraints.Validator, error)
-	GetInstanceDistributor        func() (instance.Distributor, error)
+	GetInstanceDistributor        func() (context.Distributor, error)
 	GetStorageProviderRegistry    func() (storage.ProviderRegistry, error)
 }
 
@@ -46,7 +45,7 @@ func (p *MockPolicy) ConstraintsValidator(ctx context.ProviderCallContext) (cons
 	return nil, errors.NotImplementedf("ConstraintsValidator")
 }
 
-func (p *MockPolicy) InstanceDistributor() (instance.Distributor, error) {
+func (p *MockPolicy) InstanceDistributor() (context.Distributor, error) {
 	if p.GetInstanceDistributor != nil {
 		return p.GetInstanceDistributor()
 	}

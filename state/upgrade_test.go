@@ -12,9 +12,9 @@ import (
 	gc "gopkg.in/check.v1"
 	"gopkg.in/juju/worker.v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/state"
 	statetesting "github.com/juju/juju/state/testing"
 )

@@ -29,8 +29,8 @@ import (
 
 	"github.com/juju/juju/api"
 	"github.com/juju/juju/caas/kubernetes/provider"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/controller"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/resource"
 	"github.com/juju/juju/state"
 	"github.com/juju/juju/state/multiwatcher"
@@ -58,11 +58,11 @@ func (s *BundleDeployCharmStoreSuite) TestDeployBundleInvalidFlags(c *gc.C) {
 	testcharms.UploadCharm(c, s.client, "xenial/wordpress-47", "wordpress")
 	testcharms.UploadBundle(c, s.client, "bundle/wordpress-simple-1", "wordpress-simple")
 	err := runDeploy(c, "bundle/wordpress-simple", "--config", "config.yaml")
-	c.Assert(err, gc.ErrorMatches, "flags provided but not supported when deploying a bundle: --config")
+	c.Assert(err, gc.ErrorMatches, "options provided but not supported when deploying a bundle: --config")
 	err = runDeploy(c, "bundle/wordpress-simple", "-n", "2")
-	c.Assert(err, gc.ErrorMatches, "flags provided but not supported when deploying a bundle: -n")
+	c.Assert(err, gc.ErrorMatches, "options provided but not supported when deploying a bundle: -n")
 	err = runDeploy(c, "bundle/wordpress-simple", "--series", "xenial")
-	c.Assert(err, gc.ErrorMatches, "flags provided but not supported when deploying a bundle: --series")
+	c.Assert(err, gc.ErrorMatches, "options provided but not supported when deploying a bundle: --series")
 }
 
 func (s *BundleDeployCharmStoreSuite) TestDeployBundleSuccess(c *gc.C) {

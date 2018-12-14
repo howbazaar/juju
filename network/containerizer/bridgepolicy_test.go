@@ -11,8 +11,8 @@ import (
 	gc "gopkg.in/check.v1"
 	"gopkg.in/juju/charm.v6"
 
-	"github.com/juju/juju/constraints"
-	"github.com/juju/juju/instance"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/network/containerizer"
 	"github.com/juju/juju/state"

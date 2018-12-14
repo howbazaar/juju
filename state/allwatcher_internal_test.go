@@ -18,10 +18,10 @@ import (
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/crossmodel"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/state/multiwatcher"
 	"github.com/juju/juju/state/watcher"
