@@ -17,9 +17,9 @@ import (
 	"github.com/juju/errors"
 	"gopkg.in/juju/charm.v6"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/instance"
 )
 
 // Life describes the lifecycle state of an entity ("alive", "dying"
@@ -456,6 +456,7 @@ type ModelInfo struct {
 	Life           Life                   `json:"life"`
 	Owner          string                 `json:"owner"`
 	ControllerUUID string                 `json:"controller-uuid"`
+	IsController   bool                   `json:"is-controller"`
 	Config         map[string]interface{} `json:"config,omitempty"`
 	Status         StatusInfo             `json:"status"`
 	Constraints    constraints.Value      `json:"constraints"`

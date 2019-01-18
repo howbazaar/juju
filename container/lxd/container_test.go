@@ -13,9 +13,9 @@ import (
 	"github.com/lxc/lxd/shared/osarch"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/container/lxd"
 	lxdtesting "github.com/juju/juju/container/lxd/testing"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs/tags"
 	"github.com/juju/juju/network"
 )
@@ -48,11 +48,11 @@ func (s *containerSuite) TestContainerCPUs(c *gc.C) {
 func (s *containerSuite) TestContainerMem(c *gc.C) {
 	container := lxd.Container{}
 
-	container.Config = map[string]string{"limits.memory": "1MB"}
-	c.Check(container.Mem(), gc.Equals, uint(1))
+	container.Config = map[string]string{"limits.memory": "1MiB"}
+	c.Check(int(container.Mem()), gc.Equals, 1)
 
-	container.Config = map[string]string{"limits.memory": "2GB"}
-	c.Check(container.Mem(), gc.Equals, uint(2048))
+	container.Config = map[string]string{"limits.memory": "2GiB"}
+	c.Check(int(container.Mem()), gc.Equals, 2048)
 }
 
 func (s *containerSuite) TestContainerAddDiskNoDevices(c *gc.C) {
@@ -470,7 +470,7 @@ func (s *managerSuite) TestSpecApplyConstraints(c *gc.C) {
 
 	exp := map[string]string{
 		lxd.AutoStartKey: "true",
-		"limits.memory":  "2046MB",
+		"limits.memory":  "2046MiB",
 		"limits.cpu":     "4",
 	}
 	c.Check(spec.Config, gc.DeepEquals, exp)

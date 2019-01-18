@@ -14,8 +14,8 @@ import (
 
 	"github.com/juju/juju/api"
 	apireboot "github.com/juju/juju/api/reboot"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/machinelock"
-	"github.com/juju/juju/instance"
 	jujutesting "github.com/juju/juju/juju/testing"
 	"github.com/juju/juju/juju/version"
 	"github.com/juju/juju/state"
@@ -87,6 +87,11 @@ func (s *rebootSuite) TestWorkerCatchesRebootEvent(c *gc.C) {
 	err = s.rebootState.RequestReboot()
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(wrk.Wait(), gc.Equals, worker.ErrRebootMachine)
+	// The flag is cleared.
+	rFlag, err := s.machine.GetRebootFlag()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(rFlag, jc.IsFalse)
+
 }
 
 func (s *rebootSuite) TestContainerCatchesParentFlag(c *gc.C) {

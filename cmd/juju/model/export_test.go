@@ -180,3 +180,35 @@ func NewModelCredentialCommandForTest(modelClient ModelCredentialAPI, cloudClien
 	cmd.SetClientStore(store)
 	return modelcmd.Wrap(cmd)
 }
+
+func NewAddGenerationCommandForTest(api AddGenerationCommandAPI, store jujuclient.ClientStore) cmd.Command {
+	cmd := &addGenerationCommand{
+		api: api,
+	}
+	cmd.SetClientStore(store)
+	return modelcmd.Wrap(cmd)
+}
+
+func NewCancelGenerationCommandForTest(api CancelGenerationCommandAPI, store jujuclient.ClientStore) cmd.Command {
+	cmd := &cancelGenerationCommand{
+		api: api,
+	}
+	cmd.SetClientStore(store)
+	return modelcmd.Wrap(cmd)
+}
+
+func NewAdvanceGenerationCommandForTest(api AdvanceGenerationCommandAPI, store jujuclient.ClientStore) cmd.Command {
+	cmd := &advanceGenerationCommand{
+		api: api,
+	}
+	cmd.SetClientStore(store)
+	return modelcmd.Wrap(cmd)
+}
+
+func NewSwitchGenerationCommandForTest(api SwitchGenerationCommandAPI, store jujuclient.ClientStore) cmd.Command {
+	cmd := &switchGenerationCommand{
+		api: api,
+	}
+	cmd.SetClientStore(store)
+	return modelcmd.Wrap(cmd)
+}

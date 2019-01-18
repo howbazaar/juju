@@ -7,11 +7,12 @@ import (
 	"fmt"
 
 	"github.com/juju/errors"
+	"github.com/juju/utils/set"
 	"github.com/juju/version"
 	core "k8s.io/api/core/v1"
 
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/application"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/devices"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/core/watcher"
@@ -156,6 +157,9 @@ type Broker interface {
 
 	// Operator returns an Operator with current status and life details.
 	Operator(string) (*Operator, error)
+
+	// ListHostCloudRegions lists all the cloud regions that this cluster has worker nodes/instances running in.
+	ListHostCloudRegions() (set.Strings, error)
 
 	// NamespaceWatcher provides the API to watch caas namespace.
 	NamespaceWatcher

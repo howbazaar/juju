@@ -4,10 +4,14 @@
 package state
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 
 	"github.com/juju/errors"
+	jujutxn "github.com/juju/txn"
+	"github.com/juju/utils/set"
+	"gopkg.in/juju/names.v2"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
@@ -17,7 +21,8 @@ import (
 
 // generationDoc represents the state of a model generation in MongoDB.
 type generationDoc struct {
-	Id string `bson:"generation-id"`
+	Id       string `bson:"generation-id"`
+	TxnRevno int64  `bson:"txn-revno"`
 
 	// ModelUUID indicates the model to which this generation applies.
 	ModelUUID string `bson:"model-uuid"`
@@ -74,20 +79,197 @@ func (g *Generation) AssignedUnits() map[string][]string {
 // AssignApplication indicates that the application with the input name has had
 // changes in this generation.
 func (g *Generation) AssignApplication(appName string) error {
-	return errors.NotImplementedf("AssignApplication")
+	buildTxn := func(attempt int) ([]txn.Op, error) {
+		if attempt > 0 {
+			if err := g.Refresh(); err != nil {
+				return nil, errors.Trace(err)
+			}
+		}
+		if _, ok := g.doc.AssignedUnits[appName]; ok {
+			return nil, jujutxn.ErrNoOperations
+		}
+		// Any 'next' generation that is Active, cannot also be Completed,
+		// see MakeCurrent() and NextGeneration().
+		if !g.Active() {
+			return nil, errors.New("generation is not currently active")
+		}
+		return assignGenerationAppTxnOps(g.doc.Id, appName), nil
+	}
+
+	return errors.Trace(g.st.db().Run(buildTxn))
+}
+
+func assignGenerationAppTxnOps(id, appName string) []txn.Op {
+	assignedField := "assigned-units"
+	appField := fmt.Sprintf("%s.%s", assignedField, appName)
+
+	return []txn.Op{
+		{
+			C:  generationsC,
+			Id: id,
+			Assert: bson.D{{"$and", []bson.D{
+				{{"active", true}},
+				{{"completed", 0}},
+				{{assignedField, bson.D{{"$exists", true}}}},
+				{{appField, bson.D{{"$exists", false}}}},
+			}}},
+			Update: bson.D{
+				{"$set", bson.D{{appField, []string{}}}},
+			},
+		},
+	}
+}
+
+// AssignAllUnits indicates that all units of the given application,
+// not already added to this generation will be.
+func (g *Generation) AssignAllUnits(appName string) error {
+	buildTxn := func(attempt int) ([]txn.Op, error) {
+		if attempt > 0 {
+			if err := g.Refresh(); err != nil {
+				return nil, errors.Trace(err)
+			}
+		}
+		// Any 'next' generation that is Active, cannot also be Completed,
+		// see MakeCurrent() and NextGeneration().
+		if !g.Active() {
+			return nil, errors.New("generation is not currently active")
+		}
+		unitNames, err := appUnitNames(g.st, appName)
+		if err != nil {
+			return nil, err
+		}
+		app, err := g.st.Application(appName)
+		if err != nil {
+			return nil, err
+		}
+		ops := []txn.Op{
+			{
+				C:  applicationsC,
+				Id: app.doc.DocID,
+				Assert: bson.D{
+					{"life", Alive},
+					{"unitcount", app.doc.UnitCount},
+				},
+			},
+		}
+		assignedUnits := set.NewStrings(g.doc.AssignedUnits[appName]...)
+		for _, name := range unitNames {
+			if !assignedUnits.Contains(name) {
+				ops = append(ops, assignGenerationUnitTxnOps(g.doc.Id, appName, name)...)
+			}
+		}
+		// If there are no units to add to the generation, quit here.
+		if len(ops) < 2 {
+			return nil, jujutxn.ErrNoOperations
+		}
+		return ops, nil
+	}
+	return errors.Trace(g.st.db().Run(buildTxn))
 }
 
 // AssignUnit indicates that the unit with the input name has had been added
-// to this generation and should realise config changes applied to it.
+// to this generation and should realise config changes applied to its
+// application made while the generation is active.
 func (g *Generation) AssignUnit(unitName string) error {
-	return errors.NotImplementedf("AssignApplication")
+	appName, err := names.UnitApplication(unitName)
+	if err != nil {
+		return errors.Trace(err)
+	}
+
+	buildTxn := func(attempt int) ([]txn.Op, error) {
+		if attempt > 0 {
+			if err := g.Refresh(); err != nil {
+				return nil, errors.Trace(err)
+			}
+		}
+		if set.NewStrings(g.doc.AssignedUnits[appName]...).Contains(unitName) {
+			return nil, jujutxn.ErrNoOperations
+		}
+		if !g.Active() {
+			return nil, errors.New("generation is not currently active")
+		}
+		if g.doc.Completed > 0 {
+			return nil, errors.New("generation has been completed")
+		}
+		return assignGenerationUnitTxnOps(g.doc.Id, appName, unitName), nil
+	}
+
+	return errors.Trace(g.st.db().Run(buildTxn))
 }
 
-// CanAutoComplete returns true if every application that has had configuration
+func assignGenerationUnitTxnOps(id, appName, unitName string) []txn.Op {
+	assignedField := "assigned-units"
+	appField := fmt.Sprintf("%s.%s", assignedField, appName)
+
+	return []txn.Op{
+		{
+			C:  generationsC,
+			Id: id,
+			Assert: bson.D{{"$and", []bson.D{
+				{{"active", true}},
+				{{"completed", 0}},
+				{{assignedField, bson.D{{"$exists", true}}}},
+				{{appField, bson.D{{"$not", bson.D{{"$elemMatch", bson.D{{"$eq", unitName}}}}}}}},
+			}}},
+			Update: bson.D{
+				{"$push", bson.D{{appField, unitName}}},
+			},
+		},
+	}
+}
+
+// MakeCurrent marks the generation as completed, if it is active and
+// meets autocomplete criteria, so it becomes the "current" generation.
+func (g *Generation) MakeCurrent() error {
+	buildTxn := func(attempt int) ([]txn.Op, error) {
+		if attempt > 0 {
+			if err := g.Refresh(); err != nil {
+				return nil, errors.Trace(err)
+			}
+		}
+		if g.doc.Completed > 0 {
+			return nil, jujutxn.ErrNoOperations
+		}
+		if !g.Active() {
+			return nil, errors.New("generation is not currently active")
+		}
+		ok, err := g.CanMakeCurrent()
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		if !ok {
+			return nil, errors.New("generation can not be completed")
+		}
+		time, err := g.st.ControllerTimestamp()
+		if err != nil {
+			return nil, errors.Trace(err)
+		}
+		// The generation doc has only 3 elements that change as part of juju
+		// functionality.  We want to assert than none of those have changed
+		// here, however ensuring that no new applications are added to
+		// AssignedUnits, is non trivial.  Therefore just check the txn-revno
+		// instead.
+		ops := []txn.Op{
+			{
+				C:      generationsC,
+				Id:     g.doc.Id,
+				Assert: bson.D{{"txn-revno", g.doc.TxnRevno}},
+				Update: bson.D{
+					{"$set", bson.D{{"completed", time.Unix()}}},
+					{"$set", bson.D{{"active", false}}},
+				},
+			},
+		}
+		return ops, nil
+	}
+	return errors.Trace(g.st.db().Run(buildTxn))
+}
+
+// CanMakeCurrent returns true if every application that has had configuration
 // changes in this generation also has *all* of its units assigned to the
 // generation.
-func (g *Generation) CanAutoComplete() (bool, error) {
-	can, err := g.canComplete(false)
+func (g *Generation) CanMakeCurrent() (bool, error) {
+	can, err := g.canMakeCurrent(false)
 	return can, errors.Trace(err)
 }
 
@@ -95,12 +277,12 @@ func (g *Generation) CanAutoComplete() (bool, error) {
 // changes in this generation has *all or none* of its units assigned to the
 // generation.
 func (g *Generation) CanCancel() (bool, error) {
-	can, err := g.canComplete(true)
+	can, err := g.canMakeCurrent(true)
 	return can, errors.Trace(err)
 }
 
-func (g *Generation) canComplete(allowEmpty bool) (bool, error) {
-	// This will prevent CanAutoComplete from returning true when no config
+func (g *Generation) canMakeCurrent(allowEmpty bool) (bool, error) {
+	// This will prevent CanMakeCurrent from returning true when no config
 	// changes have been made to the generation.
 	if !allowEmpty && len(g.doc.AssignedUnits) == 0 {
 		return false, nil
@@ -145,11 +327,24 @@ func appUnitNames(st *State, appId string) ([]string, error) {
 		return nil, errors.Trace(err)
 	}
 
-	names := make([]string, len(docs))
+	unitNames := make([]string, len(docs))
 	for i, doc := range docs {
-		names[i] = doc.Name
+		unitNames[i] = doc.Name
 	}
-	return names, nil
+	return unitNames, nil
+}
+
+// Refresh refreshes the contents of the generation from the underlying state.
+func (g *Generation) Refresh() error {
+	col, closer := g.st.db().GetCollection(generationsC)
+	defer closer()
+
+	var doc generationDoc
+	if err := col.FindId(g.doc.Id).One(&doc); err != nil {
+		return errors.Trace(err)
+	}
+	g.doc = doc
+	return nil
 }
 
 // AddGeneration creates a new "next" generation for the model.

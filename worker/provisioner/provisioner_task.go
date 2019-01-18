@@ -22,10 +22,11 @@ import (
 	"github.com/juju/juju/apiserver/common/networkingcommon"
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/cloudconfig/instancecfg"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/container"
 	"github.com/juju/juju/controller"
 	"github.com/juju/juju/controller/authentication"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/lxdprofile"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/core/watcher"
@@ -33,8 +34,8 @@ import (
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
 	"github.com/juju/juju/environs/imagemetadata"
+	"github.com/juju/juju/environs/instances"
 	"github.com/juju/juju/environs/simplestreams"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	providercommon "github.com/juju/juju/provider/common"
 	"github.com/juju/juju/state"
@@ -148,7 +149,7 @@ type provisionerTask struct {
 	harvestModeChan            chan config.HarvestMode
 	retryStartInstanceStrategy RetryStrategy
 	// instance id -> instance
-	instances map[instance.Id]instance.Instance
+	instances map[instance.Id]instances.Instance
 	// machine id -> machine
 	machines                 map[string]apiprovisioner.MachineProvisioner
 	machinesMutex            sync.RWMutex
@@ -330,6 +331,22 @@ func (task *provisionerTask) processMachines(ids []string) error {
 	return task.startMachines(pending)
 }
 
+// processProfileChanges adds, removes, or updates lxc profiles changes to
+// existing machines, if supported by the machine's broker.
+//
+// If this action is triggered by a charm upgrade, the instance charm profile
+// data doc is always created.  Allowing the uniter to determine if the
+// profile upgrade is in a terminal state before proceeding with charm
+// upgrade itself.
+//
+// If this action is triggered by a new 2nd unit added to an existing machine,
+// clean up of the instance charm profile data doc happens here in the case
+// of lxd profile support in the machine's broker.
+//
+// If the broker does not support lxd profiles, it is harder to determine if
+// the instance charm profile data doc should be cleaned up.  Therefore it
+// gets set to NotSupportedStatus, which then is deleted by the uniter at
+// it's installation.
 func (task *provisionerTask) processProfileChanges(ids []string) error {
 	logger.Tracef("processProfileChanges(%v)", ids)
 	if len(ids) == 0 {
@@ -350,7 +367,7 @@ func (task *provisionerTask) processProfileChanges(ids []string) error {
 	profileBroker, ok := task.broker.(environs.LXDProfiler)
 	if !ok {
 		logger.Debugf("Attempting to update the profile of a machine that doesn't support profiles")
-		profileUpgradeNotRequired(machines)
+		profileUpgradeNotSupported(machines)
 		return nil
 	}
 	for i, mResult := range machines {
@@ -358,7 +375,7 @@ func (task *provisionerTask) processProfileChanges(ids []string) error {
 			return errors.Annotatef(err, "failed to get machine %v", machineTags[i])
 		}
 		m := mResult.Machine
-		removeDoc, err := task.processOneMachineProfileChange(m, profileBroker)
+		removeDoc, err := processOneMachineProfileChange(m, profileBroker)
 		if removeDoc {
 			if err != nil {
 				logger.Errorf("cannot upgrade machine's lxd profile: %s", err.Error())
@@ -368,7 +385,9 @@ func (task *provisionerTask) processProfileChanges(ids []string) error {
 			}
 		} else if err != nil {
 			logger.Errorf("cannot upgrade machine's lxd profile: %s", err.Error())
-			m.SetUpgradeCharmProfileComplete(lxdprofile.AnnotateErrorStatus(err))
+			if err2 := m.SetUpgradeCharmProfileComplete(lxdprofile.AnnotateErrorStatus(err)); err2 != nil {
+				return errors.Annotatef(err2, "cannot set error status for instance charm profile data for machine %q", m)
+			}
 			// If Error, SetInstanceStatus in the provisioner api will also call
 			// SetStatus.
 			if err2 := m.SetInstanceStatus(status.Error, "cannot upgrade machine's lxd profile: "+err.Error(), nil); err2 != nil {
@@ -383,21 +402,23 @@ func (task *provisionerTask) processProfileChanges(ids []string) error {
 			if err2 := m.SetStatus(status.Started, "", nil); err2 != nil {
 				return errors.Annotatef(err2, "cannot set error status for machine %q agent", m)
 			}
-			m.SetUpgradeCharmProfileComplete(lxdprofile.SuccessStatus)
+			if err2 := m.SetUpgradeCharmProfileComplete(lxdprofile.SuccessStatus); err2 != nil {
+				return errors.Annotatef(err2, "cannot set success status for instance charm profile data for machine %q", m)
+			}
 		}
 	}
 	return nil
 }
 
-func profileUpgradeNotRequired(machines []apiprovisioner.MachineResult) {
+func profileUpgradeNotSupported(machines []apiprovisioner.MachineResult) {
 	for _, mResult := range machines {
-		if err := mResult.Machine.SetUpgradeCharmProfileComplete(lxdprofile.NotRequiredStatus); err != nil {
-			logger.Errorf("cannot set charm profile upgrade not required: %s", err.Error())
+		if err := mResult.Machine.SetUpgradeCharmProfileComplete(lxdprofile.NotSupportedStatus); err != nil {
+			logger.Errorf("cannot set not supported status for instance charm profile data: %s", err.Error())
 		}
 	}
 }
 
-func (task *provisionerTask) processOneMachineProfileChange(
+func processOneMachineProfileChange(
 	m apiprovisioner.MachineProvisioner,
 	profileBroker environs.LXDProfiler,
 ) (bool, error) {
@@ -431,7 +452,7 @@ func (task *provisionerTask) processOneMachineProfileChange(
 	return initialAddOfSubordinateProfile, m.SetCharmProfiles(newProfiles)
 }
 
-func instanceIds(instances []instance.Instance) []string {
+func instanceIds(instances []instances.Instance) []string {
 	ids := make([]string, 0, len(instances))
 	for _, inst := range instances {
 		ids = append(ids, string(inst.Id()))
@@ -442,7 +463,7 @@ func instanceIds(instances []instance.Instance) []string {
 // populateMachineMaps updates task.instances. Also updates
 // task.machines map if a list of IDs is given.
 func (task *provisionerTask) populateMachineMaps(ids []string) error {
-	task.instances = make(map[instance.Id]instance.Instance)
+	task.instances = make(map[instance.Id]instances.Instance)
 
 	instances, err := task.broker.AllInstances(task.cloudCallCtx)
 	if err != nil {
@@ -577,11 +598,11 @@ func classifyMachine(machine ClassifiableMachine) (
 }
 
 // findUnknownInstances finds instances which are not associated with a machine.
-func (task *provisionerTask) findUnknownInstances(stopping []instance.Instance) ([]instance.Instance, error) {
+func (task *provisionerTask) findUnknownInstances(stopping []instances.Instance) ([]instances.Instance, error) {
 	// Make a copy of the instances we know about.
-	instances := make(map[instance.Id]instance.Instance)
+	taskInstances := make(map[instance.Id]instances.Instance)
 	for k, v := range task.instances {
-		instances[k] = v
+		taskInstances[k] = v
 	}
 
 	task.machinesMutex.RLock()
@@ -590,7 +611,7 @@ func (task *provisionerTask) findUnknownInstances(stopping []instance.Instance) 
 		instId, err := m.InstanceId()
 		switch {
 		case err == nil:
-			delete(instances, instId)
+			delete(taskInstances, instId)
 		case params.IsCodeNotProvisioned(err):
 		case params.IsCodeNotFoundOrCodeUnauthorized(err):
 		default:
@@ -600,20 +621,20 @@ func (task *provisionerTask) findUnknownInstances(stopping []instance.Instance) 
 	// Now remove all those instances that we are stopping already as we
 	// know about those and don't want to include them in the unknown list.
 	for _, inst := range stopping {
-		delete(instances, inst.Id())
+		delete(taskInstances, inst.Id())
 	}
-	var unknown []instance.Instance
-	for _, inst := range instances {
+	var unknown []instances.Instance
+	for _, inst := range taskInstances {
 		unknown = append(unknown, inst)
 	}
 	return unknown, nil
 }
 
-// instancesForDeadMachines returns a list of instance.Instance that represent
+// instancesForDeadMachines returns a list of instances.Instance that represent
 // the list of dead machines running in the provider. Missing machines are
 // omitted from the list.
-func (task *provisionerTask) instancesForDeadMachines(deadMachines []apiprovisioner.MachineProvisioner) []instance.Instance {
-	var instances []instance.Instance
+func (task *provisionerTask) instancesForDeadMachines(deadMachines []apiprovisioner.MachineProvisioner) []instances.Instance {
+	var instances []instances.Instance
 	for _, machine := range deadMachines {
 		instId, err := machine.InstanceId()
 		if err == nil {
@@ -632,7 +653,7 @@ func (task *provisionerTask) instancesForDeadMachines(deadMachines []apiprovisio
 	return instances
 }
 
-func (task *provisionerTask) stopInstances(instances []instance.Instance) error {
+func (task *provisionerTask) stopInstances(instances []instances.Instance) error {
 	// Although calling StopInstance with an empty slice should produce no change in the
 	// provider, environs like dummy do not consider this a noop.
 	if len(instances) == 0 {

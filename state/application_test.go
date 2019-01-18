@@ -23,8 +23,8 @@ import (
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
 
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/application"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/crossmodel"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/resource/resourcetesting"
@@ -4065,4 +4065,32 @@ func (s *ApplicationSuite) TestCharmLegacyOnlySupportsOneSeries(c *gc.C) {
 	c.Assert(err, jc.ErrorIsNil)
 	err = app.VerifySupportedSeries("xenial", false)
 	c.Assert(err, gc.ErrorMatches, "series \"xenial\" not supported by charm \"local:precise/precise-mysql-1\", supported series are: precise")
+}
+
+func (s *ApplicationSuite) TestDeployedMachines(c *gc.C) {
+	charm := s.Factory.MakeCharm(c, &factory.CharmParams{Name: "riak"})
+	app := s.Factory.MakeApplication(c, &factory.ApplicationParams{Charm: charm})
+	s.Factory.MakeUnit(c, &factory.UnitParams{Application: app})
+	machines, err := app.DeployedMachines()
+
+	c.Assert(err, jc.ErrorIsNil)
+	var ids []string
+	for _, m := range machines {
+		ids = append(ids, m.Id())
+	}
+	c.Assert(ids, jc.SameContents, []string{"0"})
+}
+
+func (s *ApplicationSuite) TestDeployedMachinesNotAssignedUnit(c *gc.C) {
+	charm := s.Factory.MakeCharm(c, &factory.CharmParams{Name: "riak"})
+	app := s.Factory.MakeApplication(c, &factory.ApplicationParams{Charm: charm})
+
+	unit, err := app.AddUnit(state.AddUnitParams{})
+	c.Assert(err, jc.ErrorIsNil)
+	_, err = unit.AssignedMachineId()
+	c.Assert(err, jc.Satisfies, errors.IsNotAssigned)
+
+	machines, err := app.DeployedMachines()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(machines, gc.HasLen, 0)
 }

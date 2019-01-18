@@ -14,9 +14,9 @@ import (
 	gc "gopkg.in/check.v1"
 
 	"github.com/juju/juju/cloudconfig/cloudinit"
-	"github.com/juju/juju/constraints"
 	containerlxd "github.com/juju/juju/container/lxd"
 	lxdtesting "github.com/juju/juju/container/lxd/testing"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs/context"
 	"github.com/juju/juju/provider/lxd"
 )
@@ -280,7 +280,7 @@ func (s *environBrokerSuite) TestStartInstanceWithConstraints(c *gc.C) {
 		if cfg["limits.cpu"] != "2" {
 			return false
 		}
-		if cfg["limits.memory"] != "2048MB" {
+		if cfg["limits.memory"] != "2048MiB" {
 			return false
 		}
 		return spec.InstanceType == "t2.micro"

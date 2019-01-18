@@ -22,9 +22,9 @@ import (
 	"github.com/juju/juju/apiserver/facades/client/application"
 	coreapplication "github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/crossmodel"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/state"
 	statestorage "github.com/juju/juju/state/storage"
@@ -115,6 +115,11 @@ func (a *mockApplication) AllUnits() ([]application.Unit, error) {
 		units[i] = a.units[i]
 	}
 	return units, nil
+}
+
+func (a *mockApplication) SetCharmProfile(charmURL string) error {
+	a.MethodCall(a, "SetCharmProfile", charmURL)
+	return a.NextErr()
 }
 
 func (a *mockApplication) SetCharm(cfg state.SetCharmConfig) error {

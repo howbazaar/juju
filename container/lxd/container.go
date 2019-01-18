@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/juju/errors"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/network"
 	"github.com/juju/utils/arch"
 	"github.com/lxc/lxd/shared"
@@ -47,7 +47,7 @@ func (c *ContainerSpec) ApplyConstraints(cons constraints.Value) {
 		c.Config["limits.cpu"] = fmt.Sprintf("%d", *cons.CpuCores)
 	}
 	if cons.HasMem() {
-		c.Config["limits.memory"] = fmt.Sprintf("%dMB", *cons.Mem)
+		c.Config["limits.memory"] = fmt.Sprintf("%dMiB", *cons.Mem)
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 
 	"github.com/juju/description"
 	"github.com/juju/errors"
-	"github.com/juju/juju/instance"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/loggo"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils/arch"
@@ -23,7 +23,7 @@ import (
 	"gopkg.in/juju/names.v2"
 
 	apitesting "github.com/juju/juju/api/testing"
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/lease"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs"

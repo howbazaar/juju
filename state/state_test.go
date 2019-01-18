@@ -31,11 +31,11 @@ import (
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/cloud"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/core/application"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs/config"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/mongo"
 	"github.com/juju/juju/mongo/mongotest"
 	"github.com/juju/juju/network"
@@ -1829,34 +1829,6 @@ func (s *StateSuite) TestAddApplicationWithInvalidBindings(c *gc.C) {
 		c.Check(err, gc.ErrorMatches, `cannot add application "yoursql": `+test.expectedError)
 		c.Check(err, jc.Satisfies, errors.IsNotValid)
 	}
-}
-
-func (s *StateSuite) TestAssignUnitWithPlacementAddCharmProfile(c *gc.C) {
-	machine, err := s.State.AddMachine("xenial", state.JobHostUnits)
-	c.Assert(err, jc.ErrorIsNil)
-
-	name := "lxd-profile"
-	charm := state.AddTestingCharmForSeries(c, s.State, "xenial", name)
-	application := s.AddTestingApplication(c, name, charm)
-	c.Assert(err, jc.ErrorIsNil)
-	unit, err := application.AddUnit(state.AddUnitParams{})
-	c.Assert(err, jc.ErrorIsNil)
-
-	err = s.State.AssignUnitWithPlacement(unit,
-		&instance.Placement{
-			instance.MachineScope, machine.Id(),
-		},
-	)
-	c.Assert(err, jc.ErrorIsNil)
-	err = machine.Refresh()
-	c.Assert(err, jc.ErrorIsNil)
-
-	chAppName, err := machine.UpgradeCharmProfileApplication()
-	c.Assert(err, jc.ErrorIsNil)
-	c.Assert(chAppName, gc.Equals, name)
-	chCharmURL, err := machine.UpgradeCharmProfileCharmURL()
-	c.Assert(err, jc.ErrorIsNil)
-	c.Assert(chCharmURL, gc.Equals, charm.URL().String())
 }
 
 func (s *StateSuite) TestAddApplicationMachinePlacementInvalidSeries(c *gc.C) {

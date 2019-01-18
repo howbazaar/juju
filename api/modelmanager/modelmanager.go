@@ -12,9 +12,9 @@ import (
 	"github.com/juju/juju/api/base"
 	"github.com/juju/juju/api/common"
 	"github.com/juju/juju/apiserver/params"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/environs/config"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/permission"
 )
 
@@ -98,6 +98,7 @@ func convertParamsModelInfo(modelInfo params.ModelInfo) (base.ModelInfo, error) 
 		Name:            modelInfo.Name,
 		UUID:            modelInfo.UUID,
 		ControllerUUID:  modelInfo.ControllerUUID,
+		IsController:    modelInfo.IsController,
 		ProviderType:    modelInfo.ProviderType,
 		DefaultSeries:   modelInfo.DefaultSeries,
 		Cloud:           cloud.Id(),
@@ -217,6 +218,7 @@ func (c *Client) ListModelSummaries(user string, all bool) ([]base.UserModelSumm
 			UUID:               summary.UUID,
 			Type:               modelType,
 			ControllerUUID:     summary.ControllerUUID,
+			IsController:       summary.IsController,
 			ProviderType:       summary.ProviderType,
 			DefaultSeries:      summary.DefaultSeries,
 			CloudRegion:        summary.CloudRegion,

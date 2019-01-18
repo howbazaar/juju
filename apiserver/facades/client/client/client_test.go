@@ -25,15 +25,16 @@ import (
 	"github.com/juju/juju/apiserver/facades/client/client"
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/apiserver/testing"
-	"github.com/juju/juju/constraints"
 	"github.com/juju/juju/controller"
+	"github.com/juju/juju/core/constraints"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/environs"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
+	"github.com/juju/juju/environs/instances"
 	"github.com/juju/juju/environs/manual/sshprovisioner"
 	toolstesting "github.com/juju/juju/environs/tools/testing"
-	"github.com/juju/juju/instance"
 	supportedversion "github.com/juju/juju/juju/version"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/permission"
@@ -118,9 +119,8 @@ func (s *serverSuite) TestModelInfo(c *gc.C) {
 		Level: "advanced",
 		Owner: "who",
 	})
-	// The controller UUID is not returned by the ModelInfo endpoint on the
-	// Client facade.
-	c.Assert(info.ControllerUUID, gc.Equals, "")
+	c.Assert(info.ControllerUUID, gc.Equals, "controller-deadbeef-1bad-500d-9000-4b1d0d06f00d")
+	c.Assert(info.IsController, gc.Equals, model.IsControllerModel())
 }
 
 func (s *serverSuite) TestModelUsersInfo(c *gc.C) {
@@ -336,7 +336,7 @@ type mockEnviron struct {
 	err                error
 }
 
-func (m *mockEnviron) AllInstances(context.ProviderCallContext) ([]instance.Instance, error) {
+func (m *mockEnviron) AllInstances(context.ProviderCallContext) ([]instances.Instance, error) {
 	m.allInstancesCalled = true
 	return nil, m.err
 }

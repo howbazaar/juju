@@ -17,6 +17,7 @@ import (
 
 	"github.com/juju/juju/api/base"
 	"github.com/juju/juju/apiserver/params"
+	jujucmd "github.com/juju/juju/cmd"
 	"github.com/juju/juju/cmd/juju/common"
 	"github.com/juju/juju/cmd/modelcmd"
 	"github.com/juju/juju/cmd/output"
@@ -57,12 +58,12 @@ type modelsCommand struct {
 
 // Info implements Command.Info
 func (c *modelsCommand) Info() *cmd.Info {
-	return &cmd.Info{
+	return jujucmd.Info(&cmd.Info{
 		Name:    "models",
 		Purpose: "Lists models a user can access on a controller.",
 		Doc:     listModelsDoc,
 		Aliases: []string{"list-models"},
-	}
+	})
 }
 
 // SetFlags implements Command.SetFlags.
@@ -231,6 +232,7 @@ type ModelSummary struct {
 
 	ControllerUUID     string                  `json:"controller-uuid" yaml:"controller-uuid"`
 	ControllerName     string                  `json:"controller-name" yaml:"controller-name"`
+	IsController       bool                    `json:"is-controller" yaml:"is-controller"`
 	Owner              string                  `json:"owner" yaml:"owner"`
 	Cloud              string                  `json:"cloud" yaml:"cloud"`
 	CloudRegion        string                  `json:"region,omitempty" yaml:"region,omitempty"`
@@ -256,6 +258,7 @@ func (c *modelsCommand) modelSummaryFromParams(apiSummary base.UserModelSummary,
 		UUID:           apiSummary.UUID,
 		Type:           apiSummary.Type,
 		ControllerUUID: apiSummary.ControllerUUID,
+		IsController:   apiSummary.IsController,
 		Owner:          apiSummary.Owner,
 		Life:           apiSummary.Life,
 		Cloud:          apiSummary.Cloud,

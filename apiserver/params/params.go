@@ -15,10 +15,10 @@ import (
 	"github.com/juju/version"
 	"gopkg.in/macaroon.v2-unstable"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/devices"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/model"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/state/multiwatcher"
 	"github.com/juju/juju/storage"
@@ -391,16 +391,6 @@ type ApplicationSetCharm struct {
 	// update during the upgrade. This field is only understood by Application
 	// facade version 2 and greater.
 	StorageConstraints map[string]StorageConstraints `json:"storage-constraints,omitempty"`
-}
-
-// ApplicationSetCharmProfile holds the parameters for making the
-// application SetCharmProfile call.
-type ApplicationSetCharmProfile struct {
-	// ApplicationName is the name of the application to set the profile on.
-	ApplicationName string `json:"application"`
-
-	// CharmURL is the new charm's url.
-	CharmURL string `json:"charm-url"`
 }
 
 // ApplicationExpose holds the parameters for making the application Expose call.

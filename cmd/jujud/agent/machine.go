@@ -45,17 +45,18 @@ import (
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/caas"
 	"github.com/juju/juju/cert"
+	jujucmd "github.com/juju/juju/cmd"
 	"github.com/juju/juju/cmd/jujud/agent/machine"
 	"github.com/juju/juju/cmd/jujud/agent/model"
 	"github.com/juju/juju/cmd/jujud/reboot"
 	cmdutil "github.com/juju/juju/cmd/jujud/util"
 	"github.com/juju/juju/container"
 	"github.com/juju/juju/container/kvm"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/machinelock"
 	"github.com/juju/juju/core/presence"
 	"github.com/juju/juju/core/watcher"
 	"github.com/juju/juju/environs"
-	"github.com/juju/juju/instance"
 	jujunames "github.com/juju/juju/juju/names"
 	"github.com/juju/juju/juju/paths"
 	"github.com/juju/juju/mongo"
@@ -69,7 +70,6 @@ import (
 	"github.com/juju/juju/storage/looputil"
 	"github.com/juju/juju/upgrades"
 	jworker "github.com/juju/juju/worker"
-	"github.com/juju/juju/worker/apicaller"
 	workercommon "github.com/juju/juju/worker/common"
 	"github.com/juju/juju/worker/conv2state"
 	"github.com/juju/juju/worker/deployer"
@@ -232,10 +232,10 @@ func (a *machineAgentCmd) SetFlags(f *gnuflag.FlagSet) {
 
 // Info returns usage information for the command.
 func (a *machineAgentCmd) Info() *cmd.Info {
-	return &cmd.Info{
+	return jujucmd.Info(&cmd.Info{
 		Name:    "machine",
 		Purpose: "run a juju machine agent",
-	}
+	})
 }
 
 // MachineAgentFactoryFn returns a function which instantiates a
@@ -611,18 +611,8 @@ func (a *MachineAgent) makeEngineCreator(agentName string, previousAgentVersion 
 }
 
 func (a *MachineAgent) executeRebootOrShutdown(action params.RebootAction) error {
-	// At this stage, all API connections would have been closed
-	// We need to reopen the API to clear the reboot flag after
-	// scheduling the reboot. It may be cleaner to do this in the reboot
-	// worker, before returning the ErrRebootMachine.
-	conn, err := apicaller.OnlyConnect(a, api.Open)
-	if err != nil {
-		logger.Infof("Reboot: Error connecting to state")
-		return errors.Trace(err)
-	}
-
 	// block until all units/containers are ready, and reboot/shutdown
-	finalize, err := reboot.NewRebootWaiter(conn, a.CurrentConfig())
+	finalize, err := reboot.NewRebootWaiter(a.CurrentConfig())
 	if err != nil {
 		return errors.Trace(err)
 	}

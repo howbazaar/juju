@@ -19,7 +19,7 @@ import (
 	"github.com/juju/juju/api"
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/cmd/jujud/reboot"
-	"github.com/juju/juju/instance"
+	"github.com/juju/juju/core/instance"
 	jujutesting "github.com/juju/juju/juju/testing"
 	"github.com/juju/juju/mongo"
 	"github.com/juju/juju/service"
@@ -132,7 +132,7 @@ func (s *RebootSuite) newService(name string, conf common.Conf, series string) (
 }
 
 func (s *RebootSuite) TestRebootStopUnits(c *gc.C) {
-	w, err := reboot.NewRebootWaiter(s.st, s.acfg)
+	w, err := reboot.NewRebootWaiter(s.acfg)
 	c.Assert(err, jc.ErrorIsNil)
 
 	err = w.ExecuteReboot(params.ShouldReboot)

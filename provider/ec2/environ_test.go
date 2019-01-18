@@ -9,12 +9,11 @@ import (
 	amzec2 "gopkg.in/amz.v3/ec2"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
 	"github.com/juju/juju/environs/simplestreams"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 )
 
@@ -23,7 +22,7 @@ var (
 	_ environs.NetworkingEnviron = (*environ)(nil)
 	_ config.ConfigSchemaSource  = (*environProvider)(nil)
 	_ simplestreams.HasRegion    = (*environ)(nil)
-	_ instance.Distributor       = (*environ)(nil)
+	_ context.Distributor        = (*environ)(nil)
 )
 
 type Suite struct{}

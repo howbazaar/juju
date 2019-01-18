@@ -8,9 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"gopkg.in/tomb.v2"
-
 	"github.com/juju/pubsub"
+	"gopkg.in/tomb.v2"
 )
 
 const modelConfigChange = "model-config-change"

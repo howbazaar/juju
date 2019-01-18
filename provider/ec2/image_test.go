@@ -10,7 +10,7 @@ import (
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
 
-	"github.com/juju/juju/constraints"
+	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/environs/imagemetadata"
 	"github.com/juju/juju/environs/instances"
 	"github.com/juju/juju/juju/version"
@@ -47,8 +47,14 @@ var findInstanceSpecTests = []struct {
 		series: "xenial",
 		arches: []string{"amd64"},
 		cons:   "cores=4",
-		itype:  "a1.xlarge",
+		itype:  "t3.xlarge",
 		image:  "ami-00000133",
+	}, {
+		series: "bionic",
+		arches: []string{"arm64"},
+		cons:   "cores=4",
+		itype:  "a1.xlarge",
+		image:  "ami-00002133",
 	}, {
 		series: "xenial",
 		arches: []string{"amd64"},

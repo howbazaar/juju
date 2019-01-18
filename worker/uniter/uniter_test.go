@@ -674,6 +674,10 @@ func (s *UniterSuite) TestUpdateResourceCausesUpgrade(c *gc.C) {
 	// adding a "wp-content" filesystem store. We do it here rather
 	// than in the charm itself to avoid modifying all of the other
 	// scenarios.
+	// NOTE: this test does not expect the charm profile data to be
+	// in place for the resource charm upgrade. In fact it's important
+	// that we don't have it there, otherwise it causes the resource
+	// changes to stall out in real world scenarios.
 	appendResource := func(c *gc.C, ctx *context, path string) {
 		f, err := os.OpenFile(filepath.Join(path, "metadata.yaml"), os.O_RDWR|os.O_APPEND, 0644)
 		c.Assert(err, jc.ErrorIsNil)
@@ -1048,7 +1052,12 @@ func (s *UniterSuite) TestUniterRelations(c *gc.C) {
 				ft.Dir{"state/relations/90210", 0755}.Create(c, ctx.path)
 			}},
 			startUniter{},
-			waitHooks{},
+			// We need some synchronisation point here to ensure that the uniter
+			// has entered the correct place in the resolving loop. Now that we are
+			// no longer always executing config-changed, we poke the config just so
+			// we can get the event to give us the synchronisation point.
+			changeConfig{"blog-title": "Goodness Gracious Me"},
+			waitHooks{"config-changed"},
 			custom{func(c *gc.C, ctx *context) {
 				ft.Removed{"state/relations/90210"}.Check(c, ctx.path)
 			}},

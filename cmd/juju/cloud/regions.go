@@ -12,6 +12,7 @@ import (
 	"github.com/juju/gnuflag"
 	"gopkg.in/yaml.v2"
 
+	jujucmd "github.com/juju/juju/cmd"
 	"github.com/juju/juju/cmd/juju/common"
 	"github.com/juju/juju/cmd/output"
 )
@@ -41,13 +42,13 @@ func NewListRegionsCommand() cmd.Command {
 
 // Info implements Command.Info.
 func (c *listRegionsCommand) Info() *cmd.Info {
-	return &cmd.Info{
+	return jujucmd.Info(&cmd.Info{
 		Name:    "regions",
 		Args:    "<cloud>",
 		Purpose: "Lists regions for a given cloud.",
 		Doc:     listRegionsDoc,
 		Aliases: []string{"list-regions"},
-	}
+	})
 }
 
 // SetFlags implements Command.SetFlags.
@@ -84,9 +85,9 @@ func (c *listRegionsCommand) Run(ctxt *cmd.Context) error {
 	}
 	var regions interface{}
 	if c.out.Name() == "json" {
-		details := make(map[string]regionDetails)
+		details := make(map[string]RegionDetails)
 		for _, r := range cloud.Regions {
-			details[r.Name] = regionDetails{
+			details[r.Name] = RegionDetails{
 				Endpoint:         r.Endpoint,
 				IdentityEndpoint: r.IdentityEndpoint,
 				StorageEndpoint:  r.StorageEndpoint,
@@ -96,7 +97,7 @@ func (c *listRegionsCommand) Run(ctxt *cmd.Context) error {
 	} else {
 		details := make(yaml.MapSlice, len(cloud.Regions))
 		for i, r := range cloud.Regions {
-			details[i] = yaml.MapItem{r.Name, regionDetails{
+			details[i] = yaml.MapItem{r.Name, RegionDetails{
 				Name:             r.Name,
 				Endpoint:         r.Endpoint,
 				IdentityEndpoint: r.IdentityEndpoint,

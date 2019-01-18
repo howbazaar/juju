@@ -17,12 +17,12 @@ import (
 	"github.com/juju/juju/apiserver/facades/client/application"
 	"github.com/juju/juju/apiserver/facades/client/modelconfig"
 	"github.com/juju/juju/apiserver/params"
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/environs"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/context"
 	"github.com/juju/juju/environs/manual/sshprovisioner"
 	"github.com/juju/juju/environs/manual/winrmprovisioner"
-	"github.com/juju/juju/instance"
 	"github.com/juju/juju/network"
 	"github.com/juju/juju/permission"
 	"github.com/juju/juju/state"
@@ -526,16 +526,19 @@ func (c *Client) ModelInfo() (params.ModelInfo, error) {
 	if err != nil {
 		return params.ModelInfo{}, err
 	}
+
 	info := params.ModelInfo{
-		DefaultSeries: config.PreferredSeries(conf),
-		CloudTag:      names.NewCloudTag(model.Cloud()).String(),
-		CloudRegion:   model.CloudRegion(),
-		ProviderType:  conf.Type(),
-		Name:          conf.Name(),
-		Type:          string(model.Type()),
-		UUID:          model.UUID(),
-		OwnerTag:      model.Owner().String(),
-		Life:          params.Life(model.Life().String()),
+		DefaultSeries:  config.PreferredSeries(conf),
+		CloudTag:       names.NewCloudTag(model.Cloud()).String(),
+		CloudRegion:    model.CloudRegion(),
+		ProviderType:   conf.Type(),
+		Name:           conf.Name(),
+		Type:           string(model.Type()),
+		UUID:           model.UUID(),
+		OwnerTag:       model.Owner().String(),
+		Life:           params.Life(model.Life().String()),
+		ControllerUUID: state.ControllerTag().String(),
+		IsController:   state.IsController(),
 	}
 	if agentVersion, exists := conf.AgentVersion(); exists {
 		info.AgentVersion = &agentVersion

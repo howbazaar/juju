@@ -8,9 +8,9 @@ import (
 
 	"github.com/juju/version"
 
+	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/core/status"
-	"github.com/juju/juju/instance"
 )
 
 // UserModel holds information about a model and the last
@@ -56,6 +56,7 @@ type ModelInfo struct {
 	UUID            string
 	Type            model.ModelType
 	ControllerUUID  string
+	IsController    bool
 	ProviderType    string
 	DefaultSeries   string
 	Cloud           string
@@ -109,6 +110,7 @@ type UserModelSummary struct {
 	UUID               string
 	Type               model.ModelType
 	ControllerUUID     string
+	IsController       bool
 	ProviderType       string
 	DefaultSeries      string
 	Cloud              string

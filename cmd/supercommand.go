@@ -49,10 +49,18 @@ func NewSuperCommand(p cmd.SuperCommandParams) *cmd.SuperCommand {
 	// tests to assert that this string value is correct.
 	p.Version = current.String()
 	p.NotifyRun = runNotifier
+	p.FlagKnownAs = "option"
 	return cmd.NewSuperCommand(p)
 }
 
 func runNotifier(name string) {
 	logger.Infof("running %s [%s %s %s]", name, jujuversion.Current, runtime.Compiler, runtime.Version())
 	logger.Debugf("  args: %#v", os.Args)
+}
+
+func Info(i *cmd.Info) *cmd.Info {
+	info := *i
+	info.FlagKnownAs = "option"
+	info.ShowSuperFlags = []string{"show-log", "debug", "logging-config", "verbose", "quiet", "h", "help"}
+	return &info
 }
