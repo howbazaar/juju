@@ -12,6 +12,7 @@ import (
 	"gopkg.in/juju/worker.v1/workertest"
 
 	"github.com/juju/juju/apiserver/common"
+	"github.com/juju/juju/apiserver/facade"
 	"github.com/juju/juju/apiserver/facade/facadetest"
 	"github.com/juju/juju/apiserver/facades/agent/logger"
 	"github.com/juju/juju/apiserver/params"
@@ -95,27 +96,25 @@ func (s *loggerSuite) SetUpTest(c *gc.C) {
 	case <-time.After(testing.LongWait):
 		c.Fatalf("change not processed by test")
 	}
+	s.logger, err = s.makeLoggerAPI(s.authorizer)
+	c.Assert(err, jc.ErrorIsNil)
+}
 
+func (s *loggerSuite) makeLoggerAPI(auth facade.Authorizer) (*logger.LoggerAPI, error) {
 	ctx := facadetest.Context{
-		Auth_:       s.authorizer,
+		Auth_:       auth,
 		Controller_: s.controller,
 		Resources_:  s.resources,
 		State_:      s.State,
 	}
-	s.logger, err = logger.NewLoggerAPI(ctx)
-	c.Assert(err, jc.ErrorIsNil)
+	return logger.NewLoggerAPI(ctx)
 }
 
 func (s *loggerSuite) TestNewLoggerAPIRefusesNonAgent(c *gc.C) {
 	// We aren't even a machine agent
 	anAuthorizer := s.authorizer
 	anAuthorizer.Tag = names.NewUserTag("some-user")
-	endPoint, err := logger.NewLoggerAPI(facadetest.Context{
-		Auth_:       anAuthorizer,
-		Controller_: s.controller,
-		Resources_:  s.resources,
-		State_:      s.State,
-	})
+	endPoint, err := s.makeLoggerAPI(anAuthorizer)
 	c.Assert(endPoint, gc.IsNil)
 	c.Assert(err, gc.ErrorMatches, "permission denied")
 }
@@ -124,12 +123,7 @@ func (s *loggerSuite) TestNewLoggerAPIAcceptsUnitAgent(c *gc.C) {
 	// We aren't even a machine agent
 	anAuthorizer := s.authorizer
 	anAuthorizer.Tag = names.NewUnitTag("germany/7")
-	endPoint, err := logger.NewLoggerAPI(facadetest.Context{
-		Auth_:       anAuthorizer,
-		Controller_: s.controller,
-		Resources_:  s.resources,
-		State_:      s.State,
-	})
+	endPoint, err := s.makeLoggerAPI(anAuthorizer)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(endPoint, gc.NotNil)
 }
@@ -137,12 +131,7 @@ func (s *loggerSuite) TestNewLoggerAPIAcceptsUnitAgent(c *gc.C) {
 func (s *loggerSuite) TestNewLoggerAPIAcceptsApplicationAgent(c *gc.C) {
 	anAuthorizer := s.authorizer
 	anAuthorizer.Tag = names.NewApplicationTag("germany")
-	endPoint, err := logger.NewLoggerAPI(facadetest.Context{
-		Auth_:       anAuthorizer,
-		Controller_: s.controller,
-		Resources_:  s.resources,
-		State_:      s.State,
-	})
+	endPoint, err := s.makeLoggerAPI(anAuthorizer)
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(endPoint, gc.NotNil)
 }

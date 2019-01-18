@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// hash returns a hash of the yaml serialsied settings.
+// hash returns a hash of the yaml serialized settings.
 // If the settings are not able to be serialized an error is returned.
 func hash(settings map[string]interface{}) (string, error) {
 	bytes, err := yaml.Marshal(settings)

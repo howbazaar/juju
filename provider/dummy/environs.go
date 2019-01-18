@@ -930,7 +930,7 @@ func (e *environ) Bootstrap(ctx environs.BootstrapContext, callCtx context.Provi
 				return errors.Trace(err)
 			}
 			estate.modelCacheWorker = modelCache
-			err = modelcache.OutputFunc(modelCache, &estate.controller)
+			err = modelcache.ExtractCacheController(modelCache, &estate.controller)
 			if err != nil {
 				worker.Stop(modelCache)
 				return errors.Trace(err)

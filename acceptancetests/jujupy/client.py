@@ -163,10 +163,12 @@ class JujuData:
             self.kvm = (bool(self._config.get('container') == 'kvm'))
             self.maas = bool(provider == 'maas')
             self.joyent = bool(provider == 'joyent')
+            self.logging_config = self._config.get('logging-config')
         else:
             self.kvm = False
             self.maas = False
             self.joyent = False
+            self.logging_config = None
         self.credentials = {}
         self.clouds = {}
         self._cloud_name = cloud_name
@@ -199,6 +201,7 @@ class JujuData:
         result.credentials = deepcopy(self.credentials)
         result.clouds = deepcopy(self.clouds)
         result._cloud_name = self._cloud_name
+        result.logging_config = self.logging_config
         return result
 
     @classmethod
@@ -411,7 +414,9 @@ class JujuData:
     def get_cloud_credentials_item(self):
         cloud_name = self.get_cloud()
         cloud = self.credentials['credentials'][cloud_name]
-        (credentials_item,) = cloud.items()
+        # cloud credential info may include defaults we need to remove
+        cloud_cred = {k: v for k, v in cloud.iteritems() if k not in ['default-region', 'default-credential']}
+        (credentials_item,) = cloud_cred.items()
         return credentials_item
 
     def get_cloud_credentials(self):
@@ -570,7 +575,7 @@ class ModelClient:
 
     model_permissions = frozenset(['read', 'write', 'admin'])
 
-    controller_permissions = frozenset(['login', 'addmodel', 'superuser'])
+    controller_permissions = frozenset(['login', 'add-model', 'superuser'])
 
     # Granting 'login' will error as a created user has that at creation.
     ignore_permissions = frozenset(['login'])
@@ -2171,12 +2176,22 @@ class CaasClient:
         args = (self.kubectl_path, '--kubeconfig', self.kube_config_path) + args
         return subprocess.check_output(args, stderr=subprocess.STDOUT).decode('UTF-8').strip()
 
+    def kubectl_apply(self, stdin):
+        with subprocess.Popen(('echo', stdin), stdout=subprocess.PIPE) as echo:
+            o = subprocess.check_output(
+                (self.kubectl_path, '--kubeconfig', self.kube_config_path, 'apply', '-f', '-'),
+                stdin=echo.stdout
+            ).decode('UTF-8').strip()
+            log.debug(o)
+
     def get_external_hostname(self):
-        status = self.client.get_status()
         # assume here always use single node cdk core or microk8s
+        return '{}.xip.io'.format(self.get_first_worker_ip())
+
+    def get_first_worker_ip(self):
+        status = self.client.get_status()
         unit = status.get_unit('kubernetes-worker/{}'.format(0))
-        ip = status.get_machine_dns_name(unit['machine'])
-        return '{}.xip.io'.format(ip)
+        return status.get_machine_dns_name(unit['machine'])
 
 
 def register_user_interactively(client, token, controller_name):
@@ -2227,6 +2242,9 @@ def make_safe_config(client):
     # Explicitly set 'name', which Juju implicitly sets to env.environment to
     # ensure MAASAccount knows what the name will be.
     config['name'] = unqualified_model_name(client.env.environment)
+    # Pass the logging config into the yaml file
+    if client.env.logging_config is not None:
+        config['logging-config'] = client.env.logging_config
 
     return config
 

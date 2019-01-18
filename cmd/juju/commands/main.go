@@ -375,6 +375,12 @@ func registerCommands(r commandRegistry, ctx *cmd.Context) {
 	r.Register(model.NewRevokeCommand())
 	r.Register(model.NewShowCommand())
 	r.Register(model.NewModelCredentialCommand())
+	if featureflag.Enabled(feature.Generations) {
+		r.Register(model.NewAddGenerationCommand())
+		r.Register(model.NewCancelGenerationCommand())
+		r.Register(model.NewAdvanceGenerationCommand())
+		r.Register(model.NewSwitchGenerationCommand())
+	}
 
 	r.Register(newMigrateCommand())
 	r.Register(model.NewExportBundleCommand())

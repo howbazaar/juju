@@ -70,6 +70,8 @@ from utility import (
 
 __metaclass__ = type
 
+log = logging.getLogger(__name__)
+
 
 LXD_PROFILE = """
 name: juju-{model_name}
@@ -135,25 +137,29 @@ def deploy_dummy_stack(client, charm_series, use_charmstore=False):
         client.wait_for_started(3600)
 
 
-def deploy_caas_stack(bundle_path, client, timeout=3600):
+def deploy_caas_stack(path, client, timeout=3600, charm=False):
     # workaround to ensure lxd profile
     model_name = client.model_name
     profile = LXD_PROFILE.format(model_name=model_name)
     with subprocess.Popen(('echo', profile), stdout=subprocess.PIPE) as echo:
-        subprocess.check_output(
+        o = subprocess.check_output(
             ('lxc', 'profile', 'edit', 'juju-%s' % model_name),
             stdin=echo.stdout
         ).decode('UTF-8').strip()
+        log.debug(o)
 
-    client.deploy_bundle(bundle_path, static_bundle=True)
+    # Deploy a charm or a bundle depending on the flag
+    if not charm:
+        client.deploy_bundle(path, static_bundle=True)
+    else:
+        client.deploy(charm=path)
     # Wait for the deployment to finish.
     client.wait_for_started(timeout=timeout)
     # wait for cluster to stabilize
-    client.wait_for_workloads()
+    client.wait_for_workloads(timeout=timeout)
     # get current status with tabular format for better debugging
     client.juju(client._show_status, ('--format', 'tabular'))
     return CaasClient(client)
-
 
 def assess_juju_relations(client):
     token = get_random_string()
@@ -807,6 +813,8 @@ class BootstrapManager:
                                         soft_deadline=args.deadline)
             if args.to is not None:
                 client.env.bootstrap_to = args.to
+            if args.logging_config is not None:
+                client.env.logging_config = args.logging_config
         return cls.from_client(args, client)
 
     @classmethod

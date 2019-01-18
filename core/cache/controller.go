@@ -6,9 +6,8 @@ package cache
 import (
 	"sync"
 
-	"github.com/juju/loggo"
-
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
 	"github.com/juju/pubsub"
 	"gopkg.in/tomb.v2"
 )
@@ -19,7 +18,7 @@ import (
 
 // ControllerConfig is a simple config value struct for the controller.
 type ControllerConfig struct {
-	// Changes from the even source come over this channel.
+	// Changes from the event source come over this channel.
 	// The changes channel must be non-nil.
 	Changes <-chan interface{}
 
