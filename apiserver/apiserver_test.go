@@ -87,7 +87,7 @@ func (s *apiserverConfigFixture) SetUpTest(c *gc.C) {
 	s.AddCleanup(func(c *gc.C) { workertest.CleanKill(c, modelCache) })
 	c.Assert(err, jc.ErrorIsNil)
 	var controller *cache.Controller
-	err = modelcache.OutputFunc(modelCache, &controller)
+	err = modelcache.ExtractCacheController(modelCache, &controller)
 	c.Assert(err, jc.ErrorIsNil)
 
 	machineTag := names.NewMachineTag("0")
