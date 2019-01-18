@@ -29,9 +29,10 @@ type Model struct {
 	hub     *pubsub.SimpleHub
 	mu      sync.Mutex
 
-	details    ModelChange
-	configHash string
-	hashCache  *modelConfigHashCache
+	details      ModelChange
+	configHash   string
+	hashCache    *modelConfigHashCache
+	applications map[string]*Application
 }
 
 // Report returns information that is used in the dependency engine report.
@@ -39,9 +40,30 @@ func (m *Model) Report() map[string]interface{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return map[string]interface{}{
-		"name": m.details.Owner + "/" + m.details.Name,
-		"life": m.details.Life,
+		"name":              m.details.Owner + "/" + m.details.Name,
+		"life":              m.details.Life,
+		"application-count": len(m.applications),
 	}
+}
+
+// updateApplication adds or updates the application in the model.
+func (m *Model) updateApplication(ch ApplicationChange) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	app, found := m.applications[ch.Name]
+	if !found {
+		app = newApplication(m.metrics, m.hub)
+		m.applications[ch.Name] = app
+	}
+	app.setDetails(ch)
+}
+
+// removeApplication removes the application from the model.
+func (m *Model) removeApplication(ch RemoveApplication) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.applications, ch.Name)
 }
 
 // modelTopic prefixes the topic with the model UUID.

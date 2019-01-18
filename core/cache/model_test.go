@@ -34,7 +34,6 @@ func (s *ModelSuite) SetUpTest(c *gc.C) {
 	s.hub = pubsub.NewSimpleHub(&pubsub.SimpleHubConfig{
 		Logger: logger,
 	})
-
 }
 
 func (s *ModelSuite) newModel(details cache.ModelChange) *cache.Model {
@@ -46,8 +45,9 @@ func (s *ModelSuite) newModel(details cache.ModelChange) *cache.Model {
 func (s *ModelSuite) TestReport(c *gc.C) {
 	m := s.newModel(modelChange)
 	c.Assert(m.Report(), jc.DeepEquals, map[string]interface{}{
-		"name": "model-owner/test-model",
-		"life": life.Value("alive"),
+		"name":              "model-owner/test-model",
+		"life":              life.Value("alive"),
+		"application-count": 0,
 	})
 }
 

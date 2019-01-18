@@ -71,8 +71,9 @@ func (s *ControllerSuite) TestAddModel(c *gc.C) {
 	c.Check(controller.ModelUUIDs(), jc.SameContents, []string{"model-uuid"})
 	c.Check(controller.Report(), gc.DeepEquals, map[string]interface{}{
 		"model-uuid": map[string]interface{}{
-			"name": "model-owner/test-model",
-			"life": life.Value("alive"),
+			"name":              "model-owner/test-model",
+			"life":              life.Value("alive"),
+			"application-count": 0,
 		}})
 }
 

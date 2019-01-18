@@ -155,22 +155,33 @@ func (c *Controller) removeModel(ch RemoveModel) {
 	delete(c.models, ch.ModelUUID)
 }
 
-// updateApplication will...
+// updateApplication adds or updates the application in the specified model.
 func (c *Controller) updateApplication(ch ApplicationChange) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// While it is likely that we will receive a change update for the model
+	// before we get an update for the application for that model, but the
+	// cache needs to be resiliant enough to make sure that we can handle
+	// the situation where this is not the case.
 	model, found := c.models[ch.ModelUUID]
 	if !found {
 		model = newModel(c.metrics, c.hub)
 		c.models[ch.ModelUUID] = model
 	}
-	model.setDetails(ch)
+	model.updateApplication(ch)
 }
 
-// removeApplication removes...
+// removeApplication removes the application for the cached model.
 func (c *Controller) removeApplication(ch RemoveApplication) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.models, ch.ModelUUID)
+
+	model, found := c.models[ch.ModelUUID]
+	if !found {
+		// If the cache doesn't have the model loaded for the application
+		// yet, then it wouldn't have it added, so we are done.
+		return
+	}
+	model.removeApplication(ch)
 }
