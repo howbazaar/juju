@@ -274,14 +274,17 @@ func (s *WorkerSuite) captureApplicationEvents(c *gc.C) <-chan interface{} {
 	return events
 }
 
-func (s *WorkerSuite) TestRemovedModel(c *gc.C) {
+func (s *WorkerSuite) TestAddApplication(c *gc.C) {
 	changes := s.captureApplicationEvents(c)
 	w := s.start(c)
 
 	app := s.Factory.MakeApplication(c, nil)
-
+	s.State.StartSync()
+	_ = app
 	obtained := s.nextChange(c, changes)
-
+	_ = obtained
+	controller := s.getController(c, w)
+	c.Assert(controller.ModelUUIDs(), gc.HasLen, 1)
 }
 
 type noopRegisterer struct {

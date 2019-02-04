@@ -17,7 +17,10 @@ const modelConfigChange = "model-config-change"
 func newModel(metrics *ControllerGauges, hub *pubsub.SimpleHub) *Model {
 	m := &Model{
 		metrics: metrics,
-		hub:     hub,
+		// TODO: consider a separate hub per model for better scalability
+		// when many models.
+		hub:          hub,
+		applications: make(map[string]*Application),
 	}
 	return m
 }
