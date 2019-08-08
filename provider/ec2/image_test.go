@@ -172,7 +172,6 @@ func (s *specSuite) TestFindInstanceSpec(c *gc.C) {
 }
 
 func (s *specSuite) TestFindInstanceSpecNotSetCpuPowerWhenInstanceTypeSet(c *gc.C) {
-
 	instanceConstraint := &instances.InstanceConstraint{
 		Region:      "test",
 		Series:      version.SupportedLTS(),
