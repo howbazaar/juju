@@ -32,6 +32,8 @@ run_mongo_memory_profile() {
     juju controller-config mongo-memory-profile=default
 
     sleep 5
+
+    destroy_model "mongo-memory-profile"
 }
 
 test_mongo_memory_profile() {
@@ -45,6 +47,6 @@ test_mongo_memory_profile() {
 
         cd ../
 
-        run "mongo_memory_profile"
+        run "mongo memory profile"
     )
 }

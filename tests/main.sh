@@ -26,8 +26,10 @@ show_help() {
     exit 0
 }
 
-while getopts "h?:v" opt; do
+while getopts "ch?:v" opt; do
     case "${opt}" in
+    c)  export USE_CURRENT_CONTROLLER="true"
+        ;;
     h|\?)
         show_help
         ;;

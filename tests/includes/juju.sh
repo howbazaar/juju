@@ -1,48 +1,4 @@
 ensure_controller() {
-    set -e #ux
-    local provider name output
-
-    if [ -n "${EXISTING_CONTROLLER}" ]; then
-        # TODO: get the current controller name and show that in the output.
-        # or, expect the existing controller to exist in juju controllers.
-        echo "Using existing controller"
-        return
-    fi
-
-    # I think it is pretty safe to assume that LXD will be our default
-    # provider type.
-    case "${BOOTSTRAP_PROVIDER:-}" in
-        "aws")
-            provider="aws"
-            ;;
-        "lxd")
-            provider="lxd"
-            ;;
-        *)
-            echo "Expected bootstrap provider, falling back to lxd."
-            provider="lxd"
-    esac
-
-    # Look to see if the controller exists, if it doesn't, bootstrap.
-    name=${1}
-    shift
-
-    output=${1}
-    shift
-
-    echo "====> Bootstrapping juju"
-    if [ -n "${output}" ]; then
-        juju bootstrap "${provider}" "${name}" "$@" > "${output}" 2>&1
-    else
-        juju bootstrap "${provider}" "${name}" "$@"
-    fi
-    echo "${name}" >> "${TEST_DIR}/jujus"
-
-    echo "====> Bootstrapped juju"
-
-    export BOOTSTRAPPED_JUJU_CTRL_NAME="${name}"
-}
-ensure() {
     local model output
 
     model=${1}
@@ -88,7 +44,11 @@ bootstrap() {
         unset BOOTSTRAP_REUSE
     fi
 
-    if [ ! -z "${BOOTSTRAP_REUSE}" ]; then
+    if [ -n "${USE_CURRENT_CONTROLLER}" ]; then
+        export BOOTSTRAP_REUSE="true"
+    fi
+
+    if [ -n "${BOOTSTRAP_REUSE}" ]; then
         echo "====> Reusing bootstrapped juju"
 
         OUT=$(juju models --format=json 2>/dev/null | jq '.models[] | .["short-name"]' | grep "${model}" || true)
@@ -100,12 +60,12 @@ bootstrap() {
 
         add_model "${model}" "${provider}"
         name="${bootstrapped_name}"
+        echo "====> Model added"
     else
         echo "====> Bootstrapping juju"
         juju_bootstrap "${provider}" "${name}" "${model}" "${output}"
+        echo "====> Bootstrapped juju"
     fi
-
-    echo "====> Bootstrapped juju"
 
     export BOOTSTRAPPED_JUJU_CTRL_NAME="${name}"
 }
