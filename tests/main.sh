@@ -23,6 +23,8 @@ if [ "${USER:-'root'}" = "root" ]; then
     exit 1
 fi
 
+# Perhaps have proper arg parsing to check for args like:
+#  --local-controller (or some one word thing...)
 
 cleanup() {
     # Allow for failures and stop tracing everything

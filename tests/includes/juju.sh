@@ -1,3 +1,48 @@
+ensure_controller() {
+    set -e #ux
+    local provider name output
+
+    if [ -n "${EXISTING_CONTROLLER}" ]; then
+        # TODO: get the current controller name and show that in the output.
+        # or, expect the existing controller to exist in juju controllers.
+        echo "Using existing controller"
+        return
+    fi
+
+    # I think it is pretty safe to assume that LXD will be our default
+    # provider type.
+    case "${BOOTSTRAP_PROVIDER:-}" in
+        "aws")
+            provider="aws"
+            ;;
+        "lxd")
+            provider="lxd"
+            ;;
+        *)
+            echo "Expected bootstrap provider, falling back to lxd."
+            provider="lxd"
+    esac
+
+    # Look to see if the controller exists, if it doesn't, bootstrap.
+    name=${1}
+    shift
+
+    output=${1}
+    shift
+
+    echo "====> Bootstrapping juju"
+    if [ -n "${output}" ]; then
+        juju bootstrap "${provider}" "${name}" "$@" > "${output}" 2>&1
+    else
+        juju bootstrap "${provider}" "${name}" "$@"
+    fi
+    echo "${name}" >> "${TEST_DIR}/jujus"
+
+    echo "====> Bootstrapped juju"
+
+    export BOOTSTRAPPED_JUJU_CTRL_NAME="${name}"
+}
+
 bootstrap() {
     set -eux
     local provider name model
