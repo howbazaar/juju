@@ -9,13 +9,13 @@ run_mongo_memory_profile() {
 
     ensure_controller "mongo-memory-profile" "${file}"
 
-    check_contains "$(cat_mongo_service)" wiredTigerCacheSizeGB
+    check_not_contains "$(cat_mongo_service)" wiredTigerCacheSizeGB
 
     juju controller-config mongo-memory-profile=low
 
     sleep 5
 
-    check_not_contains "$(cat_mongo_service)" wiredTigerCacheSizeGB
+    check_contains "$(cat_mongo_service)" wiredTigerCacheSizeGB
 
     # Set the value back in case we are reusing a controller
     juju controller-config mongo-memory-profile=default

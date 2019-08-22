@@ -15,7 +15,7 @@ check_dependencies() {
     fi
 }
 
-check_contains() {
+check_not_contains() {
     local input value chk
 
     input=${1}
@@ -33,7 +33,7 @@ check_contains() {
     fi
 }
 
-check_not_contains() {
+check_contains() {
     local input value chk
 
     input=${1}
