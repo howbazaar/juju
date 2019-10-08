@@ -2190,6 +2190,33 @@ func AddModelLogsSize(pool *StatePool) error {
 	return nil
 }
 
+// AddModelLogsSize to controller config.
+func AddModelLogfileMaxSize(pool *StatePool) error {
+	st := pool.SystemState()
+	coll, closer := st.db().GetRawCollection(controllersC)
+	defer closer()
+	var doc settingsDoc
+	if err := coll.FindId(controllerSettingsGlobalKey).One(&doc); err != nil {
+		if err == mgo.ErrNotFound {
+			return nil
+		}
+		return errors.Trace(err)
+	}
+
+	settingsChanged :=
+		maybeUpdateSettings(doc.Settings, controller.ModelLogfileMaxSize, fmt.Sprintf("%vM", controller.DefaultModelLogfileMaxSize))
+	if settingsChanged {
+		return errors.Trace(st.runRawTransaction(
+			[]txn.Op{{
+				C:      controllersC,
+				Id:     doc.DocID,
+				Assert: txn.DocExists,
+				Update: bson.M{"$set": bson.M{"settings": doc.Settings}},
+			}}))
+	}
+	return nil
+}
+
 // AddControllerNodeDocs creates controller nodes for each
 // machine that wants to be a member of the mongo replicaset.
 func AddControllerNodeDocs(pool *StatePool) error {

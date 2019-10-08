@@ -3,6 +3,10 @@
 
 package upgrades
 
+import (
+	"github.com/juju/juju/service"
+)
+
 // stateStepsFor27 returns upgrade steps for Juju 2.7.0.
 func stateStepsFor27() []Step {
 	return []Step{
@@ -54,6 +58,28 @@ func stateStepsFor27() []Step {
 			run: func(context Context) error {
 				return context.State().EnsureRelationApplicationSettings()
 			},
+		}, &upgradeStep{
+			description: "change owner of unit and machine logs to adm",
+			targets:     []Target{AllMachines},
+			run: func(context Context) error {
+				return context.State().AddModelLogfileMaxSize()
+			},
+		}, &upgradeStep{
+			description: "change owner of unit and machine logs to adm",
+			targets:     []Target{AllMachines},
+			run:         resetLogPermissions,
 		},
 	}
+}
+
+// This adds upgrade steps, we just rewrite the default values which are set before.
+// With this we can make sure that things are changed in one default place
+func resetLogPermissions(context Context) error {
+	sysdManager := service.NewServiceManagerWithDefaults()
+	err := sysdManager.WriteServiceFiles()
+	if err != nil {
+		logger.Errorf("unsuccessful writing the service files in /lib/systemd/system path")
+		return err
+	}
+	return nil
 }
