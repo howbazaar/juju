@@ -72,7 +72,7 @@ type StateBackend interface {
 	AddSubnetIdToSubnetDocs() error
 	ReplacePortsDocSubnetIDCIDR() error
 	EnsureRelationApplicationSettings() error
-	AddModelLogfileMaxSize() error
+	AddModelLogfileControllerConfig() error
 }
 
 // Model is an interface providing access to the details of a model within the
@@ -263,8 +263,8 @@ func (s stateBackend) AddModelLogsSize() error {
 	return state.AddModelLogsSize(s.pool)
 }
 
-func (s stateBackend) AddModelLogfileMaxSize() error {
-	return state.AddModelLogfileMaxSize(s.pool)
+func (s stateBackend) AddModelLogfileControllerConfig() error {
+	return state.AddModelLogfileControllerConfig(s.pool)
 }
 
 func (s stateBackend) AddControllerNodeDocs() error {

@@ -59,10 +59,10 @@ func stateStepsFor27() []Step {
 				return context.State().EnsureRelationApplicationSettings()
 			},
 		}, &upgradeStep{
-			description: "change owner of unit and machine logs to adm",
-			targets:     []Target{AllMachines},
+			description: "add fields to controller config for model logfiles",
+			targets:     []Target{DatabaseMaster},
 			run: func(context Context) error {
-				return context.State().AddModelLogfileMaxSize()
+				return context.State().AddModelLogfileControllerConfig()
 			},
 		}, &upgradeStep{
 			description: "change owner of unit and machine logs to adm",

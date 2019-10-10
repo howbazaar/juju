@@ -2190,8 +2190,8 @@ func AddModelLogsSize(pool *StatePool) error {
 	return nil
 }
 
-// AddModelLogsSize to controller config.
-func AddModelLogfileMaxSize(pool *StatePool) error {
+// AddModelLogfileControllerConfig adds new model logfile values to controller config.
+func AddModelLogfileControllerConfig(pool *StatePool) error {
 	st := pool.SystemState()
 	coll, closer := st.db().GetRawCollection(controllersC)
 	defer closer()
@@ -2205,6 +2205,8 @@ func AddModelLogfileMaxSize(pool *StatePool) error {
 
 	settingsChanged :=
 		maybeUpdateSettings(doc.Settings, controller.ModelLogfileMaxSize, fmt.Sprintf("%vM", controller.DefaultModelLogfileMaxSize))
+	settingsChanged =
+		maybeUpdateSettings(doc.Settings, controller.ModelLogfileMaxBackups, controller.DefaultModelLogfileMaxBackups) || settingsChanged
 	if settingsChanged {
 		return errors.Trace(st.runRawTransaction(
 			[]txn.Op{{
