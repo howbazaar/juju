@@ -117,7 +117,7 @@ func (m *Model) Branches() []Branch {
 	i := 0
 	for _, b := range m.branches {
 		branches[i] = b.copy()
-		i += 1
+		i++
 	}
 
 	m.mu.Unlock()
@@ -199,12 +199,12 @@ func (m *Model) Machines() map[string]Machine {
 
 // Machine returns the machine with the input id.
 // If the machine is not found, a NotFoundError is returned.
-func (m *Model) Machine(machineId string) (Machine, error) {
+func (m *Model) Machine(machineID string) (Machine, error) {
 	defer m.doLocked()()
 
-	machine, found := m.machines[machineId]
+	machine, found := m.machines[machineID]
 	if !found {
-		return Machine{}, errors.NotFoundf("machine %q", machineId)
+		return Machine{}, errors.NotFoundf("machine %q", machineID)
 	}
 	return machine.copy(), nil
 }
