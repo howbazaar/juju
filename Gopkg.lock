@@ -485,11 +485,11 @@
   revision = "9be91dc79b7c185fa8b08e7ceceee40562055c83"
 
 [[projects]]
-  digest = "1:8835d6bbeb647a441c134c3c41881a59ea21527bddd016195847a6fb9fbab909"
+  digest = "1:c6afb3b8e5f596b1f88e5e604d8afb951cfb4553ef4008c976c8bf3a7e805e98"
   name = "github.com/juju/description"
   packages = ["."]
   pruneopts = ""
-  revision = "2e2cf381eb0406ff5edd1976dc24d3846176552b"
+  revision = "cb183d728f9d6dc45b78ad38cbbf39e06144f9b6"
 
 [[projects]]
   digest = "1:e0275dd405fa814d870a8039712ca66c110718b653e864e2e96c65acb481d8a1"
@@ -804,6 +804,14 @@
   packages = ["."]
   pruneopts = ""
   revision = "77a895ad01ebc98a4dc95d8355bc825ce80a56f6"
+
+[[projects]]
+  branch = "master"
+  digest = "1:63e7368fcf6b54804076eaec26fd9cf0c4466166b272393db4b93102e1e962df"
+  name = "github.com/kballard/go-shellquote"
+  packages = ["."]
+  pruneopts = ""
+  revision = "95032a82bc518f77982ea72343cc1ade730072f0"
 
 [[projects]]
   digest = "1:591a2778aa6e896980757ea87e659b3aa13d8c0e790310614028463a31c0998b"
@@ -1953,6 +1961,7 @@
     "github.com/juju/utils/zip",
     "github.com/juju/version",
     "github.com/juju/webbrowser",
+    "github.com/kballard/go-shellquote",
     "github.com/kr/pretty",
     "github.com/lxc/lxd/client",
     "github.com/lxc/lxd/shared",

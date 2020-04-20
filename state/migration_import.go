@@ -882,6 +882,7 @@ func (i *importer) application(a description.Application, ctrlCfg controller.Con
 			return errors.Trace(err)
 		}
 	}
+	// TODO(caas): Add raw k8s spec to juju/description for model migration!
 
 	if cs := a.CloudService(); cs != nil {
 		app, err := i.st.Application(a.Name())
@@ -966,6 +967,11 @@ func (i *importer) parseBindings(bindingsMap map[string]string) (*Bindings, erro
 
 	// 2.6 controllers only populate the default space key if set to the
 	// non-default space whereas 2.7 controllers always set it.
+	// The application implementation in the description package has
+	// `omitempty` for bindings, so we need to create it if nil.
+	if bindingsMap == nil {
+		bindingsMap = make(map[string]string, 1)
+	}
 	if _, exists := bindingsMap[defaultEndpointName]; !exists {
 		bindingsMap[defaultEndpointName] = network.AlphaSpaceName
 	}
@@ -1153,16 +1159,8 @@ func (i *importer) unit(s description.Application, u description.Unit, ctrlCfg c
 	if err := i.importStatusHistory(unit.globalWorkloadVersionKey(), u.WorkloadVersionHistory()); err != nil {
 		return errors.Trace(err)
 	}
-	if unitState := u.State(); len(unitState) != 0 {
-		us := NewUnitState()
-		us.SetState(unitState)
-		limits := UnitStateSizeLimits{
-			MaxCharmStateSize: ctrlCfg.MaxCharmStateSize(),
-			MaxAgentStateSize: ctrlCfg.MaxAgentStateSize(),
-		}
-		if err := unit.SetState(us, limits); err != nil {
-			return errors.Trace(err)
-		}
+	if err := i.importUnitState(unit, u, ctrlCfg); err != nil {
+		return errors.Trace(err)
 	}
 	if i.dbModel.Type() == ModelTypeIAAS {
 		if err := i.importUnitPayloads(unit, u.Payloads()); err != nil {
@@ -1170,6 +1168,36 @@ func (i *importer) unit(s description.Application, u description.Unit, ctrlCfg c
 		}
 	}
 	return nil
+}
+
+func (i *importer) importUnitState(unit *Unit, u description.Unit, ctrlCfg controller.Config) error {
+	us := NewUnitState()
+
+	if charmState := u.CharmState(); len(charmState) != 0 {
+		us.SetCharmState(charmState)
+	}
+	if relationState := u.RelationState(); len(relationState) != 0 {
+		us.SetRelationState(relationState)
+	}
+	if uniterState := u.UniterState(); uniterState != "" {
+		us.SetUniterState(uniterState)
+	}
+	if storageState := u.StorageState(); storageState != "" {
+		us.SetStorageState(storageState)
+	}
+	if meterStatusState := u.MeterStatusState(); meterStatusState != "" {
+		us.SetMeterStatusState(meterStatusState)
+	}
+
+	// No state to persist.
+	if !us.Modified() {
+		return nil
+	}
+
+	return unit.SetState(us, UnitStateSizeLimits{
+		MaxCharmStateSize: ctrlCfg.MaxCharmStateSize(),
+		MaxAgentStateSize: ctrlCfg.MaxAgentStateSize(),
+	})
 }
 
 func (i *importer) importUnitPayloads(unit *Unit, payloads []description.Payload) error {

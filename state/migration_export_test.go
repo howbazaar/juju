@@ -90,12 +90,12 @@ func (s *MigrationBaseSuite) primeStatusHistory(c *gc.C, entity statusSetter, st
 	}, 0, "")
 }
 
-func (s *MigrationBaseSuite) makeApplicationWithUnits(c *gc.C, applicationname string, count int) {
+func (s *MigrationBaseSuite) makeApplicationWithUnits(c *gc.C, applicationName string, count int) {
 	units := make([]*state.Unit, count)
 	application := s.Factory.MakeApplication(c, &factory.ApplicationParams{
-		Name: applicationname,
+		Name: applicationName,
 		Charm: s.Factory.MakeCharm(c, &factory.CharmParams{
-			Name: applicationname,
+			Name: applicationName,
 		}),
 	})
 	for i := 0; i < count; i++ {
@@ -111,7 +111,7 @@ func (s *MigrationBaseSuite) makeUnitApplicationLeader(c *gc.C, unitName, applic
 		loggo.GetLogger("migration_export_test"),
 	)
 	target.Claimed(
-		lease.Key{"application-leadership", s.State.ModelUUID(), applicationName},
+		lease.Key{Namespace: "application-leadership", ModelUUID: s.State.ModelUUID(), Lease: applicationName},
 		unitName,
 	)
 }
@@ -759,7 +759,11 @@ func (s *MigrationExportSuite) assertMigrateUnits(c *gc.C, st *state.State) {
 		c.Assert(err, jc.ErrorIsNil)
 	}
 	us := state.NewUnitState()
-	us.SetState(map[string]string{"payload": "b4dc0ffee"})
+	us.SetCharmState(map[string]string{"payload": "b4dc0ffee"})
+	us.SetRelationState(map[int]string{42: "magic"})
+	us.SetUniterState("uniter state")
+	us.SetStorageState("storage state")
+	us.SetMeterStatusState("meter status state")
 	err = unit.SetState(us, state.UnitStateSizeLimits{})
 	c.Assert(err, jc.ErrorIsNil)
 
@@ -810,7 +814,11 @@ func (s *MigrationExportSuite) assertMigrateUnits(c *gc.C, st *state.State) {
 	c.Assert(exported.MeterStatusInfo(), gc.Equals, "some info")
 	c.Assert(exported.WorkloadVersion(), gc.Equals, "steven")
 	c.Assert(exported.Annotations(), jc.DeepEquals, testAnnotations)
-	c.Assert(exported.State(), jc.DeepEquals, map[string]string{"payload": "b4dc0ffee"})
+	c.Assert(exported.CharmState(), jc.DeepEquals, map[string]string{"payload": "b4dc0ffee"})
+	c.Assert(exported.RelationState(), jc.DeepEquals, map[int]string{42: "magic"})
+	c.Assert(exported.UniterState(), gc.Equals, "uniter state")
+	c.Assert(exported.StorageState(), gc.Equals, "storage state")
+	c.Assert(exported.MeterStatusState(), gc.Equals, "meter status state")
 	obtainedConstraints := exported.Constraints()
 	c.Assert(obtainedConstraints, gc.NotNil)
 	c.Assert(obtainedConstraints.Architecture(), gc.Equals, "amd64")

@@ -5329,6 +5329,143 @@
         }
     },
     {
+        "Name": "CAASAdmission",
+        "Version": 1,
+        "Schema": {
+            "type": "object",
+            "properties": {
+                "ControllerAPIInfoForModels": {
+                    "type": "object",
+                    "properties": {
+                        "Params": {
+                            "$ref": "#/definitions/Entities"
+                        },
+                        "Result": {
+                            "$ref": "#/definitions/ControllerAPIInfoResults"
+                        }
+                    }
+                },
+                "ControllerConfig": {
+                    "type": "object",
+                    "properties": {
+                        "Result": {
+                            "$ref": "#/definitions/ControllerConfigResult"
+                        }
+                    }
+                }
+            },
+            "definitions": {
+                "ControllerAPIInfoResult": {
+                    "type": "object",
+                    "properties": {
+                        "addresses": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        },
+                        "cacert": {
+                            "type": "string"
+                        },
+                        "error": {
+                            "$ref": "#/definitions/Error"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "addresses",
+                        "cacert"
+                    ]
+                },
+                "ControllerAPIInfoResults": {
+                    "type": "object",
+                    "properties": {
+                        "results": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/ControllerAPIInfoResult"
+                            }
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "results"
+                    ]
+                },
+                "ControllerConfigResult": {
+                    "type": "object",
+                    "properties": {
+                        "config": {
+                            "type": "object",
+                            "patternProperties": {
+                                ".*": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "config"
+                    ]
+                },
+                "Entities": {
+                    "type": "object",
+                    "properties": {
+                        "entities": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/Entity"
+                            }
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "entities"
+                    ]
+                },
+                "Entity": {
+                    "type": "object",
+                    "properties": {
+                        "tag": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "tag"
+                    ]
+                },
+                "Error": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string"
+                        },
+                        "info": {
+                            "type": "object",
+                            "patternProperties": {
+                                ".*": {
+                                    "type": "object",
+                                    "additionalProperties": true
+                                }
+                            }
+                        },
+                        "message": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                        "message",
+                        "code"
+                    ]
+                }
+            }
+        }
+    },
+    {
         "Name": "CAASAgent",
         "Version": 1,
         "Schema": {
@@ -7888,6 +8025,9 @@
                             "type": "string"
                         },
                         "pod-spec": {
+                            "type": "string"
+                        },
+                        "raw-k8s-spec": {
                             "type": "string"
                         },
                         "tags": {
@@ -21675,10 +21815,7 @@
                 "SetUnitStateArg": {
                     "type": "object",
                     "properties": {
-                        "meter-status-state": {
-                            "type": "string"
-                        },
-                        "relation-state": {
+                        "charm-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -21686,7 +21823,10 @@
                                 }
                             }
                         },
-                        "state": {
+                        "meter-status-state": {
+                            "type": "string"
+                        },
+                        "relation-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -21727,13 +21867,7 @@
                 "UnitStateResult": {
                     "type": "object",
                     "properties": {
-                        "error": {
-                            "$ref": "#/definitions/Error"
-                        },
-                        "meter-status-state": {
-                            "type": "string"
-                        },
-                        "relation-state": {
+                        "charm-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -21741,7 +21875,13 @@
                                 }
                             }
                         },
-                        "state": {
+                        "error": {
+                            "$ref": "#/definitions/Error"
+                        },
+                        "meter-status-state": {
+                            "type": "string"
+                        },
+                        "relation-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -35793,6 +35933,17 @@
                         }
                     }
                 },
+                "GetRawK8sSpec": {
+                    "type": "object",
+                    "properties": {
+                        "Params": {
+                            "$ref": "#/definitions/Entities"
+                        },
+                        "Result": {
+                            "$ref": "#/definitions/StringResults"
+                        }
+                    }
+                },
                 "GoalStates": {
                     "type": "object",
                     "properties": {
@@ -36827,6 +36978,9 @@
                             "items": {
                                 "$ref": "#/definitions/RelationUnitSettings"
                             }
+                        },
+                        "set-raw-k8s-spec": {
+                            "$ref": "#/definitions/PodSpec"
                         },
                         "tag": {
                             "type": "string"
@@ -38153,10 +38307,7 @@
                 "SetUnitStateArg": {
                     "type": "object",
                     "properties": {
-                        "meter-status-state": {
-                            "type": "string"
-                        },
-                        "relation-state": {
+                        "charm-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -38164,7 +38315,10 @@
                                 }
                             }
                         },
-                        "state": {
+                        "meter-status-state": {
+                            "type": "string"
+                        },
+                        "relation-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -38629,13 +38783,7 @@
                 "UnitStateResult": {
                     "type": "object",
                     "properties": {
-                        "error": {
-                            "$ref": "#/definitions/Error"
-                        },
-                        "meter-status-state": {
-                            "type": "string"
-                        },
-                        "relation-state": {
+                        "charm-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -38643,7 +38791,13 @@
                                 }
                             }
                         },
-                        "state": {
+                        "error": {
+                            "$ref": "#/definitions/Error"
+                        },
+                        "meter-status-state": {
+                            "type": "string"
+                        },
+                        "relation-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -39228,7 +39382,7 @@
                         }
                     }
                 },
-                "WriteUniterState": {
+                "WriteAgentState": {
                     "type": "object",
                     "properties": {
                         "Params": {
@@ -39305,10 +39459,7 @@
                 "SetUnitStateArg": {
                     "type": "object",
                     "properties": {
-                        "meter-status-state": {
-                            "type": "string"
-                        },
-                        "relation-state": {
+                        "charm-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {
@@ -39316,7 +39467,10 @@
                                 }
                             }
                         },
-                        "state": {
+                        "meter-status-state": {
+                            "type": "string"
+                        },
+                        "relation-state": {
                             "type": "object",
                             "patternProperties": {
                                 ".*": {

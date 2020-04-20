@@ -289,58 +289,61 @@ type HookContext struct {
 	// podSpecYaml is the pending pod spec to be committed.
 	podSpecYaml *string
 
-	// A cached view of the unit's state that gets persisted by juju once
-	// the context is flushed.
-	cacheValues map[string]string
+	// k8sRawSpecYaml is the pending raw k8s spec to be committed.
+	k8sRawSpecYaml *string
+
+	// A cached view of the unit's charm state that gets persisted by juju
+	// once the context is flushed.
+	cachedCharmState map[string]string
 
 	// A flag that keeps track of whether the unit's state has been mutated.
-	cacheDirty bool
+	charmStateCacheDirty bool
 
 	mu sync.Mutex
 }
 
-// GetCache returns a copy of the cache.
-// Implements jujuc.HookContext.unitCacheContext, part of runner.Context.
-func (ctx *HookContext) GetCache() (map[string]string, error) {
+// GetCharmState returns a copy of the cached charm state.
+// Implements jujuc.HookContext.unitCharmStateContext, part of runner.Context.
+func (ctx *HookContext) GetCharmState() (map[string]string, error) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
-	if err := ctx.ensureStateValuesLoaded(); err != nil {
+	if err := ctx.ensureCharmStateLoaded(); err != nil {
 		return nil, err
 	}
 
-	if len(ctx.cacheValues) == 0 {
+	if len(ctx.cachedCharmState) == 0 {
 		return nil, nil
 	}
 
-	retVal := make(map[string]string, len(ctx.cacheValues))
-	for k, v := range ctx.cacheValues {
+	retVal := make(map[string]string, len(ctx.cachedCharmState))
+	for k, v := range ctx.cachedCharmState {
 		retVal[k] = v
 	}
 	return retVal, nil
 }
 
-// GetSingleCacheValue returns the value of the given key.
-// Implements jujuc.HookContext.unitCacheContext, part of runner.Context.
-func (ctx *HookContext) GetSingleCacheValue(key string) (string, error) {
+// GetCharmStateValue returns the value of the given key.
+// Implements jujuc.HookContext.unitCharmStateContext, part of runner.Context.
+func (ctx *HookContext) GetCharmStateValue(key string) (string, error) {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
-	if err := ctx.ensureStateValuesLoaded(); err != nil {
+	if err := ctx.ensureCharmStateLoaded(); err != nil {
 		return "", err
 	}
 
-	value, ok := ctx.cacheValues[key]
+	value, ok := ctx.cachedCharmState[key]
 	if !ok {
 		return "", errors.NotFoundf("%q", key)
 	}
 	return value, nil
 }
 
-// SetCacheValue sets the key/value pair provided in the cache.
-// Implements jujuc.HookContext.unitCacheContext, part of runner.Context.
-func (ctx *HookContext) SetCacheValue(key, value string) error {
+// SetCharmStateValue sets the key/value pair provided in the cache.
+// Implements jujuc.HookContext.unitCharmStateContext, part of runner.Context.
+func (ctx *HookContext) SetCharmStateValue(key, value string) error {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
-	if err := ctx.ensureStateValuesLoaded(); err != nil {
+	if err := ctx.ensureCharmStateLoaded(); err != nil {
 		return err
 	}
 
@@ -351,55 +354,57 @@ func (ctx *HookContext) SetCacheValue(key, value string) error {
 		return errors.Trace(err)
 	}
 
-	curValue, exists := ctx.cacheValues[key]
+	curValue, exists := ctx.cachedCharmState[key]
 	if exists && curValue == value {
 		return nil // no-op
 	}
 
-	ctx.cacheValues[key] = value
-	ctx.cacheDirty = true
+	ctx.cachedCharmState[key] = value
+	ctx.charmStateCacheDirty = true
 	return nil
 }
 
-// DeleteCacheValue deletes the key/value pair for the given key from
+// DeleteCharmStateValue deletes the key/value pair for the given key from
 // the cache.
-// Implements jujuc.HookContext.unitCacheContext, part of runner.Context.
-func (ctx *HookContext) DeleteCacheValue(key string) error {
+// Implements jujuc.HookContext.unitCharmStateContext, part of runner.Context.
+func (ctx *HookContext) DeleteCharmStateValue(key string) error {
 	ctx.mu.Lock()
 	defer ctx.mu.Unlock()
-	if err := ctx.ensureStateValuesLoaded(); err != nil {
+	if err := ctx.ensureCharmStateLoaded(); err != nil {
 		return err
 	}
 
-	if _, exists := ctx.cacheValues[key]; !exists {
+	if _, exists := ctx.cachedCharmState[key]; !exists {
 		return nil // no-op
 	}
 
-	delete(ctx.cacheValues, key)
-	ctx.cacheDirty = true
+	delete(ctx.cachedCharmState, key)
+	ctx.charmStateCacheDirty = true
 	return nil
 }
 
-// ensureStateValuesLoaded retrieves and caches the unit's state from the
+// ensureCharmStateLoaded retrieves and caches the unit's charm state from the
 // controller. The caller of this method must be holding the ctx mutex.
-func (ctx *HookContext) ensureStateValuesLoaded() error {
+func (ctx *HookContext) ensureCharmStateLoaded() error {
 	// NOTE: Assuming lock to be held!
-	if ctx.cacheValues != nil {
+	if ctx.cachedCharmState != nil {
 		return nil
 	}
 
 	// Load from controller
-	var state map[string]string
+	var charmState map[string]string
 	unitState, err := ctx.unit.State()
 	if err != nil {
 		return errors.Annotate(err, "loading unit state from database")
 	}
-	if unitState.State == nil {
-		state = make(map[string]string)
+	if unitState.CharmState == nil {
+		charmState = make(map[string]string)
 	} else {
-		state = unitState.State
+		charmState = unitState.CharmState
 	}
-	ctx.cacheValues = state
+
+	ctx.cachedCharmState = charmState
+	ctx.charmStateCacheDirty = false
 	return nil
 }
 
@@ -589,12 +594,12 @@ func (ctx *HookContext) SetApplicationStatus(applicationStatus jujuc.StatusInfo)
 	)
 }
 
-// Implements runner.Context.
+// HasExecutionSetUnitStatus implements runner.Context.
 func (ctx *HookContext) HasExecutionSetUnitStatus() bool {
 	return ctx.hasRunStatusSet
 }
 
-// Implements runner.Context.
+// ResetExecutionSetUnitStatus implements runner.Context.
 func (ctx *HookContext) ResetExecutionSetUnitStatus() {
 	ctx.hasRunStatusSet = false
 }
@@ -740,13 +745,12 @@ func (ctx *HookContext) GoalState() (*application.GoalState, error) {
 // SetPodSpec sets the podspec for the unit's application.
 // Implements jujuc.HookContext.ContextUnit, part of runner.Context.
 func (ctx *HookContext) SetPodSpec(specYaml string) error {
-	entityName := ctx.unitName
 	isLeader, err := ctx.IsLeader()
 	if err != nil {
 		return errors.Annotatef(err, "cannot determine leadership")
 	}
 	if !isLeader {
-		logger.Errorf("%v is not the leader but is setting application pod spec", entityName)
+		logger.Errorf("%q is not the leader but is setting application k8s spec", ctx.unitName)
 		return ErrIsNotLeader
 	}
 	_, err = k8sspecs.ParsePodSpec(specYaml)
@@ -757,11 +761,37 @@ func (ctx *HookContext) SetPodSpec(specYaml string) error {
 	return nil
 }
 
+// SetRawK8sSpec sets the raw k8s spec for the unit's application.
+// Implements jujuc.HookContext.ContextUnit, part of runner.Context.
+func (ctx *HookContext) SetRawK8sSpec(specYaml string) error {
+	isLeader, err := ctx.IsLeader()
+	if err != nil {
+		return errors.Annotatef(err, "cannot determine leadership")
+	}
+	if !isLeader {
+		logger.Errorf("%q is not the leader but is setting application raw k8s spec", ctx.unitName)
+		return ErrIsNotLeader
+	}
+	_, err = k8sspecs.ParseRawK8sSpec(specYaml)
+	if err != nil {
+		return errors.Trace(err)
+	}
+	ctx.k8sRawSpecYaml = &specYaml
+	return nil
+}
+
 // GetPodSpec returns the k8s spec for the unit's application.
 // Implements jujuc.HookContext.ContextUnit, part of runner.Context.
 func (ctx *HookContext) GetPodSpec() (string, error) {
 	appName := ctx.unit.ApplicationName()
 	return ctx.state.GetPodSpec(appName)
+}
+
+// GetRawK8sSpec returns the raw k8s spec for the unit's application.
+// Implements jujuc.HookContext.ContextUnit, part of runner.Context.
+func (ctx *HookContext) GetRawK8sSpec() (string, error) {
+	appName := ctx.unit.ApplicationName()
+	return ctx.state.GetRawK8sSpec(appName)
 }
 
 // CloudSpec return the cloud specification for the running unit's model.
@@ -916,7 +946,7 @@ func (ctx *HookContext) ActionData() (*ActionData, error) {
 // such that it can know what environment it's operating in, and can call back
 // into context.
 // Implements runner.Context.
-func (ctx *HookContext) HookVars(paths Paths, remote bool) ([]string, error) {
+func (ctx *HookContext) HookVars(paths Paths, remote bool, getEnv GetEnvFunc) ([]string, error) {
 	vars := ctx.legacyProxySettings.AsEnvironmentValues()
 	// TODO(thumper): as work on proxies progress, there will be additional
 	// proxy settings to be added.
@@ -979,8 +1009,7 @@ func (ctx *HookContext) HookVars(paths Paths, remote bool) ([]string, error) {
 			"JUJU_ACTION_TAG="+ctx.actionData.Tag.String(),
 		)
 	}
-
-	return append(vars, OSDependentEnvVars(paths)...), nil
+	return append(vars, OSDependentEnvVars(paths, getEnv)...), nil
 }
 
 func (ctx *HookContext) handleReboot(ctxErr error) error {
@@ -1057,8 +1086,8 @@ func (ctx *HookContext) doFlush(process string) error {
 		b.UpdateNetworkInfo()
 	}
 
-	if ctx.cacheDirty {
-		b.UpdateUnitState(ctx.cacheValues)
+	if ctx.charmStateCacheDirty {
+		b.UpdateCharmState(ctx.cachedCharmState)
 	}
 
 	for _, rctx := range ctx.relations {
@@ -1081,21 +1110,10 @@ func (ctx *HookContext) doFlush(process string) error {
 		b.AddStorage(ctx.storageAddConstraints)
 	}
 
-	// If we're running the upgrade-charm hook and no podspec update was done,
-	// we'll still trigger a change to a counter on the podspec so that we can
-	// ensure any other charm changes (eg storage) are acted on.
-	if ctx.modelType == model.CAAS && (ctx.podSpecYaml != nil || process == string(hooks.UpgradeCharm)) {
-		isLeader, err := ctx.IsLeader()
-		if err != nil {
-			return errors.Annotatef(err, "cannot determine leadership")
+	if ctx.modelType == model.CAAS {
+		if err := ctx.addCommitHookChangesForCAAS(b, process); err != nil {
+			return err
 		}
-		if !isLeader {
-			logger.Errorf("%v is not the leader but is setting application pod spec", ctx.unitName)
-			return ErrIsNotLeader
-		}
-
-		appTag := names.NewApplicationTag(ctx.unit.ApplicationName())
-		b.SetPodSpec(appTag, ctx.podSpecYaml)
 	}
 
 	// Generate change request but skip its execution if no changes are pending.
@@ -1109,7 +1127,37 @@ func (ctx *HookContext) doFlush(process string) error {
 	}
 
 	// Call completed successfully; update local state
-	ctx.cacheDirty = false
+	ctx.charmStateCacheDirty = false
+	return nil
+}
+
+// If we're running the upgrade-charm hook and no podspec update was done,
+// we'll still trigger a change to a counter on the podspec so that we can
+// ensure any other charm changes (eg storage) are acted on.
+func (ctx *HookContext) addCommitHookChangesForCAAS(builder *uniter.CommitHookParamsBuilder, process string) error {
+	if ctx.podSpecYaml == nil && ctx.k8sRawSpecYaml == nil && process != string(hooks.UpgradeCharm) {
+		// No ops for any situation unless any k8s spec needs to be set or "upgrade-charm" was run.
+		return nil
+	}
+	if ctx.podSpecYaml != nil && ctx.k8sRawSpecYaml != nil {
+		return errors.NewForbidden(nil, "either k8s-spec-set or k8s-raw-set can be run for each application, but not both")
+	}
+
+	isLeader, err := ctx.IsLeader()
+	if err != nil {
+		return errors.Annotatef(err, "cannot determine leadership")
+	}
+	if !isLeader {
+		logger.Errorf("%v is not the leader but is setting application k8s spec", ctx.unitName)
+		return ErrIsNotLeader
+	}
+
+	appTag := names.NewApplicationTag(ctx.unit.ApplicationName())
+	if ctx.k8sRawSpecYaml != nil {
+		builder.SetRawK8sSpec(appTag, ctx.k8sRawSpecYaml)
+	} else {
+		builder.SetPodSpec(appTag, ctx.podSpecYaml)
+	}
 	return nil
 }
 
