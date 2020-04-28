@@ -4,12 +4,13 @@
 package operation
 
 import (
+	corecharm "github.com/juju/charm/v7"
 	"github.com/juju/errors"
-	corecharm "gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/worker/uniter/charm"
 	"github.com/juju/juju/worker/uniter/hook"
+	"github.com/juju/juju/worker/uniter/remotestate"
 	"github.com/juju/juju/worker/uniter/runner"
 )
 
@@ -20,6 +21,7 @@ type FactoryParams struct {
 	Callbacks      Callbacks
 	Abort          <-chan struct{}
 	MetricSpoolDir string
+	Logger         Logger
 }
 
 // NewFactory returns a Factory that creates Operations backed by the supplied
@@ -44,7 +46,7 @@ func (f *factory) newDeploy(kind Kind, charmURL *corecharm.URL, revert, resolved
 	} else if kind != Install && kind != Upgrade {
 		return nil, errors.Errorf("unknown deploy kind: %s", kind)
 	}
-	return &deploy{
+	var op Operation = &deploy{
 		kind:      kind,
 		charmURL:  charmURL,
 		revert:    revert,
@@ -52,7 +54,8 @@ func (f *factory) newDeploy(kind Kind, charmURL *corecharm.URL, revert, resolved
 		callbacks: f.config.Callbacks,
 		deployer:  f.config.Deployer,
 		abort:     f.config.Abort,
-	}, nil
+	}
+	return op, nil
 }
 
 // NewInstall is part of the Factory interface.
@@ -65,9 +68,17 @@ func (f *factory) NewUpgrade(charmURL *corecharm.URL) (Operation, error) {
 	return f.newDeploy(Upgrade, charmURL, false, false)
 }
 
-// NewNoOpUpgrade is part of the Factory interface.
-func (f *factory) NewNoOpUpgrade(charmURL *corecharm.URL) (Operation, error) {
-	return &skipOperation{&noOpUpgrade{charmURL: charmURL}}, nil
+// NewRemoteInit is part of the Factory interface.
+func (f *factory) NewRemoteInit(runningStatus remotestate.ContainerRunningStatus) (Operation, error) {
+	return &remoteInit{
+		callbacks:     f.config.Callbacks,
+		abort:         f.config.Abort,
+		runningStatus: runningStatus,
+	}, nil
+}
+
+func (f *factory) NewSkipRemoteInit(retry bool) (Operation, error) {
+	return &skipRemoteInit{retry}, nil
 }
 
 func (f *factory) NewNoOpFinishUpgradeSeries() (Operation, error) {
@@ -93,6 +104,7 @@ func (f *factory) NewRunHook(hookInfo hook.Info) (Operation, error) {
 		info:          hookInfo,
 		callbacks:     f.config.Callbacks,
 		runnerFactory: f.config.RunnerFactory,
+		logger:        f.config.Logger,
 	}, nil
 }
 
@@ -114,6 +126,7 @@ func (f *factory) NewAction(actionId string) (Operation, error) {
 		actionId:      actionId,
 		callbacks:     f.config.Callbacks,
 		runnerFactory: f.config.RunnerFactory,
+		logger:        f.config.Logger,
 	}, nil
 }
 
@@ -147,12 +160,13 @@ func (f *factory) NewCommands(args CommandArgs, sendResponse CommandResponseFunc
 		sendResponse:  sendResponse,
 		callbacks:     f.config.Callbacks,
 		runnerFactory: f.config.RunnerFactory,
+		logger:        f.config.Logger,
 	}, nil
 }
 
 // NewResignLeadership is part of the Factory interface.
 func (f *factory) NewResignLeadership() (Operation, error) {
-	return &resignLeadership{}, nil
+	return &resignLeadership{logger: f.config.Logger}, nil
 }
 
 // NewAcceptLeadership is part of the Factory interface.

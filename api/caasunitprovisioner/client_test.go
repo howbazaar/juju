@@ -5,10 +5,10 @@ package caasunitprovisioner_test
 
 import (
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	basetesting "github.com/juju/juju/api/base/testing"
 	"github.com/juju/juju/api/caasunitprovisioner"
@@ -485,5 +485,30 @@ func (s *unitprovisionerSuite) TestSetOperatorStatus(c *gc.C) {
 
 	client := caasunitprovisioner.NewClient(apiCaller)
 	err := client.SetOperatorStatus("gitlab", status.Error, "broken", map[string]interface{}{"foo": "bar"})
+	c.Assert(err, gc.ErrorMatches, "FAIL")
+}
+
+func (s *unitprovisionerSuite) TestClearApplicationResources(c *gc.C) {
+	apiCaller := basetesting.APICallerFunc(func(objType string, version int, id, request string, arg, result interface{}) error {
+		c.Check(objType, gc.Equals, "CAASUnitProvisioner")
+		c.Check(version, gc.Equals, 0)
+		c.Check(id, gc.Equals, "")
+		c.Check(request, gc.Equals, "ClearApplicationsResources")
+		c.Assert(arg, jc.DeepEquals, params.Entities{
+			Entities: []params.Entity{{
+				Tag: "application-gitlab",
+			}},
+		})
+		c.Assert(result, gc.FitsTypeOf, &params.ErrorResults{})
+		*(result.(*params.ErrorResults)) = params.ErrorResults{
+			Results: []params.ErrorResult{{
+				Error: &params.Error{Message: "FAIL"},
+			}},
+		}
+		return nil
+	})
+
+	client := caasunitprovisioner.NewClient(apiCaller)
+	err := client.ClearApplicationResources("gitlab")
 	c.Assert(err, gc.ErrorMatches, "FAIL")
 }

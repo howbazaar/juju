@@ -7,9 +7,9 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
 	"github.com/lxc/lxd/shared/api"
-	"gopkg.in/juju/charm.v6"
 
 	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/lxdprofile"
@@ -98,7 +98,26 @@ func (env *environ) initProfile() error {
 		"boot.autostart":   "true",
 		"security.nesting": "true",
 	}
-	return env.serverUnlocked.CreateProfileWithConfig(pName, cfg)
+
+	// In ci, perhaps other places, there can be a race if more than one
+	// controller is starting up, where we try to create the profile more
+	// than once and get: The profile already exists.  LXD does not have
+	// typed errors. Therefore if CreateProfile fails, check to see if the
+	// profile exists.  No need to fail if it does.
+	err = env.serverUnlocked.CreateProfileWithConfig(pName, cfg)
+	if err == nil {
+		return nil
+	}
+	hasProfile, hasErr := env.serverUnlocked.HasProfile(pName)
+	if hasErr != nil {
+		logger.Errorf("%s", err)
+		return errors.Trace(hasErr)
+	}
+	if hasProfile {
+		logger.Debugf("received %q, but no need to fail", err)
+		return nil
+	}
+	return err
 }
 
 func (env *environ) profileName() string {

@@ -11,9 +11,9 @@ import (
 	"github.com/juju/loggo"
 	"github.com/juju/utils/voyeur"
 	"github.com/juju/version"
+	"github.com/juju/worker/v2"
+	"github.com/juju/worker/v2/dependency"
 	"github.com/prometheus/client_golang/prometheus"
-	"gopkg.in/juju/worker.v1"
-	"gopkg.in/juju/worker.v1/dependency"
 
 	coreagent "github.com/juju/juju/agent"
 	"github.com/juju/juju/api"
@@ -31,7 +31,6 @@ import (
 	"github.com/juju/juju/worker/apicaller"
 	"github.com/juju/juju/worker/apiconfigwatcher"
 	"github.com/juju/juju/worker/caasoperator"
-	"github.com/juju/juju/worker/caasunitinit"
 	"github.com/juju/juju/worker/caasupgrader"
 	"github.com/juju/juju/worker/fortress"
 	"github.com/juju/juju/worker/gate"
@@ -210,6 +209,7 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 			ValidateMigration: config.ValidateMigration,
 			NewFacade:         migrationminion.NewFacade,
 			NewWorker:         migrationminion.NewWorker,
+			Logger:            loggo.GetLogger("juju.worker.migrationminion"),
 		}),
 
 		// The proxy config updater is a leaf worker that sets http/https/apt/etc
@@ -241,6 +241,7 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 		apiAddressUpdaterName: ifNotMigrating(apiaddressupdater.Manifold(apiaddressupdater.ManifoldConfig{
 			AgentName:     agentName,
 			APICallerName: apiCallerName,
+			Logger:        loggo.GetLogger("juju.worker.apiaddressupdater"),
 		})),
 
 		// The charmdir resource coordinates whether the charm directory is
@@ -264,6 +265,7 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 		// sends metrics; etc etc etc.
 
 		operatorName: ifNotMigrating(caasoperator.Manifold(caasoperator.ManifoldConfig{
+			Logger:                loggo.GetLogger("juju.worker.caasoperator"),
 			AgentName:             agentName,
 			APICallerName:         apiCallerName,
 			ClockName:             clockName,
@@ -284,19 +286,6 @@ func Manifolds(config ManifoldsConfig) dependency.Manifolds {
 			NewExecClient:                  config.NewExecClient,
 			NewContainerStartWatcherClient: config.NewContainerStartWatcherClient,
 			RunListenerSocket:              config.RunListenerSocket,
-		})),
-
-		unitInitWorkerName: ifNotMigrating(caasunitinit.Manifold(caasunitinit.ManifoldConfig{
-			Logger:        loggo.GetLogger("juju.worker.caasunitinit"),
-			AgentName:     agentName,
-			APICallerName: apiCallerName,
-			ClockName:     clockName,
-			NewWorker:     caasunitinit.NewWorker,
-			NewClient: func(caller base.APICaller) caasunitinit.Client {
-				return caasoperatorapi.NewClient(caller)
-			},
-			NewExecClient:    config.NewExecClient,
-			LoadOperatorInfo: caasoperator.LoadOperatorInfo,
 		})),
 	}
 }
@@ -330,7 +319,6 @@ const (
 	clockName            = "clock"
 	operatorName         = "operator"
 	logSenderName        = "log-sender"
-	unitInitWorkerName   = "unit-init-worker"
 
 	charmDirName          = "charm-dir"
 	hookRetryStrategyName = "hook-retry-strategy"

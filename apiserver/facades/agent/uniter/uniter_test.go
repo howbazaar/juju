@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	"github.com/kr/pretty"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
 	"gopkg.in/juju/environschema.v1"
-	"gopkg.in/juju/names.v3"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/juju/juju/api"
@@ -1338,11 +1338,20 @@ func (s *uniterSuite) TestWatchActionNotificationsPermissionDenied(c *gc.C) {
 }
 
 func (s *uniterSuite) TestConfigSettings(c *gc.C) {
-	err := s.wordpressUnit.SetCharmURL(s.wpCharm.URL())
+	// We must set the unit's charm URL via the API in order to ensure that the
+	// cache is synchronised. WaitForModelWatchersIdle is not sufficient.
+	res, err := s.uniter.SetCharmURL(params.EntitiesCharmURL{
+		Entities: []params.EntityCharmURL{
+			{
+				Tag:      s.wordpressUnit.Tag().String(),
+				CharmURL: s.wpCharm.URL().String(),
+			},
+		},
+	})
 	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(res.OneError(), jc.ErrorIsNil)
 
-	s.WaitForModelWatchersIdle(c, s.State.ModelUUID())
-
+	c.Assert(s.wordpressUnit.Refresh(), jc.ErrorIsNil)
 	settings, err := s.wordpressUnit.ConfigSettings()
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(settings, gc.DeepEquals, charm.Settings{"blog-title": "My Title"})

@@ -12,14 +12,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juju/charm/v7"
+	charmresource "github.com/juju/charm/v7/resource"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	charmresource "gopkg.in/juju/charm.v6/resource"
 
 	"github.com/juju/juju/api"
 	"github.com/juju/juju/apiserver/params"
@@ -1340,11 +1340,10 @@ func (s *BundleDeployCharmStoreSuite) TestDeployBundleMultipleRelations(c *gc.C)
                 num_units: 1
         relations:
             - ["wp:db", "mysql:server"]
-            - ["wp:db", "pgres:server"]
             - ["varnish:webcache", "wp:cache"]
     `)
 	c.Assert(err, jc.ErrorIsNil)
-	s.assertRelationsEstablished(c, "wp:db mysql:server", "wp:db pgres:server", "wp:cache varnish:webcache")
+	s.assertRelationsEstablished(c, "wp:db mysql:server", "wp:cache varnish:webcache")
 	s.assertUnitsCreated(c, map[string]string{
 		"mysql/0":   "0",
 		"pgres/0":   "1",

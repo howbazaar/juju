@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/testing"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/apiserver/facades/controller/caasunitprovisioner"
 	"github.com/juju/juju/caas/kubernetes/provider"
@@ -181,6 +181,11 @@ func (a *mockApplication) GetScale() int {
 func (a *mockApplication) SetScale(scale int, generation int64, force bool) error {
 	a.MethodCall(a, "SetScale", scale)
 	a.scale = scale
+	return nil
+}
+
+func (a *mockApplication) ClearResources() error {
+	a.MethodCall(a, "ClearResources")
 	return nil
 }
 

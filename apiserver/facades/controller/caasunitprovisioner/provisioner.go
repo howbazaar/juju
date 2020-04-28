@@ -8,12 +8,12 @@ import (
 	"sort"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/clock"
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/apiserver/common"
 	"github.com/juju/juju/apiserver/common/storagecommon"
@@ -1286,6 +1286,34 @@ func (a *Facade) updateFilesystemInfo(filesystemUpdates map[string]filesystemInf
 	}
 
 	return nil
+}
+
+// ClearApplicationsResources clears the flags which indicate
+// applications still have resources in the cluster.
+func (a *Facade) ClearApplicationsResources(args params.Entities) (params.ErrorResults, error) {
+	result := params.ErrorResults{
+		Results: make([]params.ErrorResult, len(args.Entities)),
+	}
+	if len(args.Entities) == 0 {
+		return result, nil
+	}
+	for i, entity := range args.Entities {
+		appTag, err := names.ParseApplicationTag(entity.Tag)
+		if err != nil {
+			result.Results[i].Error = common.ServerError(err)
+			continue
+		}
+		app, err := a.state.Application(appTag.Id())
+		if err != nil {
+			result.Results[i].Error = common.ServerError(err)
+			continue
+		}
+		err = app.ClearResources()
+		if err != nil {
+			result.Results[i].Error = common.ServerError(err)
+		}
+	}
+	return result, nil
 }
 
 // UpdateApplicationsService updates the Juju data model to reflect the given

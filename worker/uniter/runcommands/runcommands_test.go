@@ -4,11 +4,12 @@
 package runcommands_test
 
 import (
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils/exec"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
 
 	"github.com/juju/juju/worker/uniter/operation"
 	"github.com/juju/juju/worker/uniter/remotestate"
@@ -26,7 +27,7 @@ type runcommandsSuite struct {
 	opFactory        operation.Factory
 	resolver         resolver.Resolver
 	commands         runcommands.Commands
-	runCommands      func(string) (*exec.ExecResponse, error)
+	runCommands      func(string, runner.RunLocation) (*exec.ExecResponse, error)
 	commandCompleted func(string)
 }
 
@@ -37,8 +38,8 @@ func (s *runcommandsSuite) SetUpTest(c *gc.C) {
 	s.remoteState = remotestate.Snapshot{
 		CharmURL: s.charmURL,
 	}
-	s.mockRunner = mockRunner{runCommands: func(commands string) (*exec.ExecResponse, error) {
-		return s.runCommands(commands)
+	s.mockRunner = mockRunner{runCommands: func(commands string, runLocation runner.RunLocation) (*exec.ExecResponse, error) {
+		return s.runCommands(commands, runLocation)
 	}}
 	s.callbacks = &mockCallbacks{}
 	s.opFactory = operation.NewFactory(operation.FactoryParams{
@@ -48,6 +49,7 @@ func (s *runcommandsSuite) SetUpTest(c *gc.C) {
 				return &s.mockRunner, nil
 			},
 		},
+		Logger: loggo.GetLogger("test"),
 	})
 
 	s.commands = runcommands.NewCommands()
@@ -69,7 +71,8 @@ func (s *runcommandsSuite) TestRunCommands(c *gc.C) {
 		},
 	}
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(*exec.ExecResponse, error) bool { return false })
 	s.remoteState.Commands = []string{id}
 	op, err := s.resolver.NextOp(localState, s.remoteState, s.opFactory)
@@ -84,7 +87,8 @@ func (s *runcommandsSuite) TestRunCommandsCallbacks(c *gc.C) {
 	}
 
 	var run []string
-	s.runCommands = func(commands string) (*exec.ExecResponse, error) {
+	s.runCommands = func(commands string, runLocation runner.RunLocation) (*exec.ExecResponse, error) {
+		c.Assert(runLocation, gc.Equals, runner.Operator)
 		run = append(run, commands)
 		return &exec.ExecResponse{}, nil
 	}
@@ -96,7 +100,8 @@ func (s *runcommandsSuite) TestRunCommandsCallbacks(c *gc.C) {
 	}
 
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(*exec.ExecResponse, error) bool { return false })
 	s.remoteState.Commands = []string{id}
 
@@ -130,7 +135,8 @@ func (s *runcommandsSuite) TestRunCommandsCommitErrorNoCompletedCallback(c *gc.C
 	}
 
 	var run []string
-	s.runCommands = func(commands string) (*exec.ExecResponse, error) {
+	s.runCommands = func(commands string, runLocation runner.RunLocation) (*exec.ExecResponse, error) {
+		c.Assert(runLocation, gc.Equals, runner.Operator)
 		run = append(run, commands)
 		return &exec.ExecResponse{}, nil
 	}
@@ -142,7 +148,8 @@ func (s *runcommandsSuite) TestRunCommandsCommitErrorNoCompletedCallback(c *gc.C
 	}
 
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(*exec.ExecResponse, error) bool { return false })
 	s.remoteState.Commands = []string{id}
 
@@ -171,13 +178,15 @@ func (s *runcommandsSuite) TestRunCommandsError(c *gc.C) {
 			Kind: operation.Continue,
 		},
 	}
-	s.runCommands = func(commands string) (*exec.ExecResponse, error) {
+	s.runCommands = func(commands string, runLocation runner.RunLocation) (*exec.ExecResponse, error) {
+		c.Assert(runLocation, gc.Equals, runner.Operator)
 		return nil, errors.Errorf("executing commands: %s", commands)
 	}
 
 	var execErr error
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(_ *exec.ExecResponse, err error) bool {
 		execErr = err
 		return false
@@ -203,13 +212,15 @@ func (s *runcommandsSuite) TestRunCommandsErrorConsumed(c *gc.C) {
 			Kind: operation.Continue,
 		},
 	}
-	s.runCommands = func(commands string) (*exec.ExecResponse, error) {
+	s.runCommands = func(commands string, runLocation runner.RunLocation) (*exec.ExecResponse, error) {
+		c.Assert(runLocation, gc.Equals, runner.Operator)
 		return nil, errors.Errorf("executing commands: %s", commands)
 	}
 
 	var execErr error
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(_ *exec.ExecResponse, err error) bool {
 		execErr = err
 		return true
@@ -237,7 +248,8 @@ func (s *runcommandsSuite) TestRunCommandsStatus(c *gc.C) {
 	}
 
 	id := s.commands.AddCommand(operation.CommandArgs{
-		Commands: "echo foxtrot",
+		Commands:    "echo foxtrot",
+		RunLocation: runner.Operator,
 	}, func(*exec.ExecResponse, error) bool { return false })
 	s.remoteState.Commands = []string{id}
 

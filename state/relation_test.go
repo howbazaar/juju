@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/core/crossmodel"
 	"github.com/juju/juju/core/permission"
@@ -87,6 +87,25 @@ func (s *RelationSuite) TestAddRelationErrors(c *gc.C) {
 	c.Assert(err, gc.ErrorMatches, `cannot add relation "wordpress:db mysql:server": application "wordpress" is not alive`)
 	assertNoRelations(c, wordpress)
 	assertNoRelations(c, mysql)
+}
+
+func (s *StateSuite) TestAddRelationWithMaxLimit(c *gc.C) {
+	s.AddTestingApplication(c, "mysql", s.AddTestingCharm(c, "mysql"))
+	s.AddTestingApplication(c, "mariadb", s.AddTestingCharm(c, "mariadb"))
+	s.AddTestingApplication(c, "wordpress", s.AddTestingCharm(c, "wordpress"))
+
+	// First relation should be established without an issue
+	eps, err := s.State.InferEndpoints("wordpress", "mysql")
+	c.Assert(err, jc.ErrorIsNil)
+	_, err = s.State.AddRelation(eps...)
+	c.Assert(err, jc.ErrorIsNil)
+
+	// Attempting to add a new relation between wordpress and mariadb
+	// should fail because wordpress:db specifies a max relation limit of 1
+	eps, err = s.State.InferEndpoints("wordpress", "mariadb")
+	c.Assert(err, jc.ErrorIsNil)
+	_, err = s.State.AddRelation(eps...)
+	c.Assert(err, jc.Satisfies, errors.IsQuotaLimitExceeded, gc.Commentf("expected second add-relation attempt to fail due to the limit:1 entry in the wordpress charm's metadata.yaml"))
 }
 
 func (s *RelationSuite) TestRetrieveSuccess(c *gc.C) {

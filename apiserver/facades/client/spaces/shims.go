@@ -12,6 +12,21 @@ import (
 	"github.com/juju/juju/state/stateenvirons"
 )
 
+// addressShim implements Address.
+type addressShim struct {
+	*state.Address
+}
+
+// Subnet implements Address by returning the state.Subnet
+// as a network.SubnetInfo
+func (a *addressShim) Subnet() (network.SubnetInfo, error) {
+	s, err := a.Address.Subnet()
+	if err != nil {
+		return network.SubnetInfo{}, errors.Trace(err)
+	}
+	return s.NetworkSubnet(), nil
+}
+
 // machineShim implements Machine.
 type machineShim struct {
 	*state.Machine
@@ -26,9 +41,23 @@ func (m *machineShim) AllAddresses() ([]Address, error) {
 	}
 	shimAddr := make([]Address, len(addresses))
 	for i, address := range addresses {
-		shimAddr[i] = address
+		shimAddr[i] = &addressShim{address}
 	}
 	return shimAddr, nil
+}
+
+// Units implements Machine by wrapping each state.Unit
+// reference in the Unit indirection.
+func (m *machineShim) Units() ([]Unit, error) {
+	units, err := m.Machine.Units()
+	if err != nil {
+		return nil, err
+	}
+	indirected := make([]Unit, len(units))
+	for i, unit := range units {
+		indirected[i] = unit
+	}
+	return indirected, nil
 }
 
 // movingSubnet wraps a state.Subnet
@@ -45,6 +74,13 @@ type stateShim struct {
 	model *state.Model
 }
 
+// ApplicationEndpointBindingsShim is a shim interface for
+// stateless access to ApplicationEndpointBindings.
+type ApplicationEndpointBindingsShim struct {
+	AppName  string
+	Bindings map[string]string
+}
+
 // NewStateShim returns a new state shim.
 func NewStateShim(st *state.State) (*stateShim, error) {
 	m, err := st.Model()
@@ -58,9 +94,13 @@ func NewStateShim(st *state.State) (*stateShim, error) {
 	}, nil
 }
 
-func (s *stateShim) AddSpace(name string, providerId network.Id, subnetIds []string, public bool) error {
-	_, err := s.State.AddSpace(name, providerId, subnetIds, public)
-	return err
+func (s *stateShim) AddSpace(name string, providerId network.Id, subnetIds []string, public bool) (networkingcommon.BackingSpace, error) {
+	result, err := s.State.AddSpace(name, providerId, subnetIds, public)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
+	space := networkingcommon.NewSpaceShim(result)
+	return space, nil
 }
 
 func (s *stateShim) SpaceByName(name string) (networkingcommon.BackingSpace, error) {

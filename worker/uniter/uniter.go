@@ -8,16 +8,15 @@ import (
 	"os"
 	"sync"
 
+	corecharm "github.com/juju/charm/v7"
+	"github.com/juju/charm/v7/hooks"
 	"github.com/juju/clock"
 	"github.com/juju/errors"
-	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	"github.com/juju/utils"
 	"github.com/juju/utils/exec"
-	corecharm "gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/charm.v6/hooks"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1"
-	"gopkg.in/juju/worker.v1/catacomb"
+	"github.com/juju/worker/v2"
+	"github.com/juju/worker/v2/catacomb"
 
 	"github.com/juju/juju/agent/tools"
 	"github.com/juju/juju/api/uniter"
@@ -32,6 +31,7 @@ import (
 	"github.com/juju/juju/worker/fortress"
 	"github.com/juju/juju/worker/uniter/actions"
 	"github.com/juju/juju/worker/uniter/charm"
+	"github.com/juju/juju/worker/uniter/container"
 	"github.com/juju/juju/worker/uniter/hook"
 	uniterleadership "github.com/juju/juju/worker/uniter/leadership"
 	"github.com/juju/juju/worker/uniter/operation"
@@ -47,8 +47,6 @@ import (
 )
 
 var (
-	logger = loggo.GetLogger("juju.worker.uniter")
-
 	// ErrCAASUnitDead is the error returned from terminate or init
 	// if the unit is Dead.
 	ErrCAASUnitDead = errors.New("unit dead")
@@ -67,6 +65,9 @@ type UniterExecutionObserver interface {
 type RebootQuerier interface {
 	Query(tag names.Tag) (bool, error)
 }
+
+// RemoteInitFunc is used to init remote state
+type RemoteInitFunc func(remotestate.ContainerRunningStatus, <-chan struct{}) error
 
 // Uniter implements the capabilities of the unit agent. It is not intended to
 // implement the actual *behaviour* of the unit agent; that responsibility is
@@ -120,12 +121,15 @@ type Uniter struct {
 	// application's charm. It is passed to the remote state watcher.
 	applicationChannel watcher.NotifyChannel
 
-	// runningStatusChannel, if set, is used to signal a change in the
+	// containerRunningStatusChannel, if set, is used to signal a change in the
 	// unit's status. It is passed to the remote state watcher.
-	runningStatusChannel watcher.NotifyChannel
+	containerRunningStatusChannel watcher.NotifyChannel
 
-	// runningStatusFunc used to determine the unit's running status.
-	runningStatusFunc remotestate.RunningStatusFunc
+	// containerRunningStatusFunc is used to determine the unit's running status.
+	containerRunningStatusFunc remotestate.ContainerRunningStatusFunc
+
+	// remoteInitFunc is used to init remote charm state.
+	remoteInitFunc RemoteInitFunc
 
 	// hookRetryStrategy represents configuration for hook retries
 	hookRetryStrategy params.RetryStrategy
@@ -137,34 +141,38 @@ type Uniter struct {
 	// rebootQuerier allows the uniter to detect when the machine has
 	// rebooted so we can notify the charms accordingly.
 	rebootQuerier RebootQuerier
+
+	logger Logger
 }
 
 // UniterParams hold all the necessary parameters for a new Uniter.
 type UniterParams struct {
-	UniterFacade            *uniter.State
-	UnitTag                 names.UnitTag
-	ModelType               model.ModelType
-	LeadershipTracker       leadership.TrackerWorker
-	DataDir                 string
-	Downloader              charm.Downloader
-	MachineLock             machinelock.Lock
-	CharmDirGuard           fortress.Guard
-	UpdateStatusSignal      remotestate.UpdateStatusTimerFunc
-	HookRetryStrategy       params.RetryStrategy
-	NewOperationExecutor    NewOperationExecutorFunc
-	NewRemoteRunnerExecutor NewRunnerExecutorFunc
-	RunListener             *RunListener
-	TranslateResolverErr    func(error) error
-	Clock                   clock.Clock
-	ApplicationChannel      watcher.NotifyChannel
-	RunningStatusChannel    watcher.NotifyChannel
-	RunningStatusFunc       remotestate.RunningStatusFunc
-	SocketConfig            *SocketConfig
+	UniterFacade                  *uniter.State
+	UnitTag                       names.UnitTag
+	ModelType                     model.ModelType
+	LeadershipTracker             leadership.TrackerWorker
+	DataDir                       string
+	Downloader                    charm.Downloader
+	MachineLock                   machinelock.Lock
+	CharmDirGuard                 fortress.Guard
+	UpdateStatusSignal            remotestate.UpdateStatusTimerFunc
+	HookRetryStrategy             params.RetryStrategy
+	NewOperationExecutor          NewOperationExecutorFunc
+	NewRemoteRunnerExecutor       NewRunnerExecutorFunc
+	RemoteInitFunc                RemoteInitFunc
+	RunListener                   *RunListener
+	TranslateResolverErr          func(error) error
+	Clock                         clock.Clock
+	ApplicationChannel            watcher.NotifyChannel
+	ContainerRunningStatusChannel watcher.NotifyChannel
+	ContainerRunningStatusFunc    remotestate.ContainerRunningStatusFunc
+	SocketConfig                  *SocketConfig
 	// TODO (mattyw, wallyworld, fwereade) Having the observer here make this approach a bit more legitimate, but it isn't.
 	// the observer is only a stop gap to be used in tests. A better approach would be to have the uniter tests start hooks
 	// that write to files, and have the tests watch the output to know that hooks have finished.
 	Observer      UniterExecutionObserver
 	RebootQuerier RebootQuerier
+	Logger        Logger
 }
 
 // NewOperationExecutorFunc is a func which returns an operations.Executor.
@@ -193,7 +201,7 @@ func NewUniter(uniterParams *UniterParams) (*Uniter, error) {
 func StartUniter(runner *worker.Runner, params *UniterParams) error {
 	startFunc := newUniter(params)
 
-	logger.Debugf("starting uniter for  %q", params.UnitTag.Id())
+	params.Logger.Debugf("starting uniter for  %q", params.UnitTag.Id())
 	err := runner.StartWorker(params.UnitTag.Id(), startFunc)
 	return errors.Annotate(err, "error starting uniter worker")
 }
@@ -204,25 +212,27 @@ func newUniter(uniterParams *UniterParams) func() (worker.Worker, error) {
 		translateResolverErr = func(err error) error { return err }
 	}
 	u := &Uniter{
-		st:                      uniterParams.UniterFacade,
-		paths:                   NewPaths(uniterParams.DataDir, uniterParams.UnitTag, uniterParams.SocketConfig),
-		modelType:               uniterParams.ModelType,
-		hookLock:                uniterParams.MachineLock,
-		leadershipTracker:       uniterParams.LeadershipTracker,
-		charmDirGuard:           uniterParams.CharmDirGuard,
-		updateStatusAt:          uniterParams.UpdateStatusSignal,
-		hookRetryStrategy:       uniterParams.HookRetryStrategy,
-		newOperationExecutor:    uniterParams.NewOperationExecutor,
-		newRemoteRunnerExecutor: uniterParams.NewRemoteRunnerExecutor,
-		translateResolverErr:    translateResolverErr,
-		observer:                uniterParams.Observer,
-		clock:                   uniterParams.Clock,
-		downloader:              uniterParams.Downloader,
-		applicationChannel:      uniterParams.ApplicationChannel,
-		runningStatusChannel:    uniterParams.RunningStatusChannel,
-		runningStatusFunc:       uniterParams.RunningStatusFunc,
-		runListener:             uniterParams.RunListener,
-		rebootQuerier:           uniterParams.RebootQuerier,
+		st:                            uniterParams.UniterFacade,
+		paths:                         NewPaths(uniterParams.DataDir, uniterParams.UnitTag, uniterParams.SocketConfig),
+		modelType:                     uniterParams.ModelType,
+		hookLock:                      uniterParams.MachineLock,
+		leadershipTracker:             uniterParams.LeadershipTracker,
+		charmDirGuard:                 uniterParams.CharmDirGuard,
+		updateStatusAt:                uniterParams.UpdateStatusSignal,
+		hookRetryStrategy:             uniterParams.HookRetryStrategy,
+		newOperationExecutor:          uniterParams.NewOperationExecutor,
+		newRemoteRunnerExecutor:       uniterParams.NewRemoteRunnerExecutor,
+		remoteInitFunc:                uniterParams.RemoteInitFunc,
+		translateResolverErr:          translateResolverErr,
+		observer:                      uniterParams.Observer,
+		clock:                         uniterParams.Clock,
+		downloader:                    uniterParams.Downloader,
+		applicationChannel:            uniterParams.ApplicationChannel,
+		containerRunningStatusChannel: uniterParams.ContainerRunningStatusChannel,
+		containerRunningStatusFunc:    uniterParams.ContainerRunningStatusFunc,
+		runListener:                   uniterParams.RunListener,
+		rebootQuerier:                 uniterParams.RebootQuerier,
+		logger:                        uniterParams.Logger,
 	}
 	startFunc := func() (worker.Worker, error) {
 		plan := catacomb.Plan{
@@ -258,7 +268,7 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 			return errors.Annotatef(err, "failed to initialize uniter for %q", unitTag)
 		}
 	}
-	logger.Infof("unit %q started", u.unit)
+	u.logger.Infof("unit %q started", u.unit)
 
 	// Install is a special case, as it must run before there
 	// is any remote state, and before the remote state watcher
@@ -267,7 +277,7 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 	var charmModifiedVersion int
 	opState := u.operationExecutor.State()
 	if opState.Kind == operation.Install {
-		logger.Infof("resuming charm install")
+		u.logger.Infof("resuming charm install")
 		op, err := u.operationFactory.NewInstall(opState.CharmURL)
 		if err != nil {
 			return errors.Trace(err)
@@ -297,7 +307,7 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 		watcherMu sync.Mutex
 	)
 
-	logger.Infof("hooks are retried %v", u.hookRetryStrategy.ShouldRetry)
+	u.logger.Infof("hooks are retried %v", u.hookRetryStrategy.ShouldRetry)
 	retryHookChan := make(chan struct{}, 1)
 	// TODO(katco): 2016-08-09: This type is deprecated: lp:1611427
 	retryHookTimer := utils.NewBackoffTimer(utils.BackoffTimerConfig{
@@ -333,16 +343,16 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 		var err error
 		watcher, err = remotestate.NewWatcher(
 			remotestate.WatcherConfig{
-				State:                remotestate.NewAPIState(u.st),
-				LeadershipTracker:    u.leadershipTracker,
-				UnitTag:              unitTag,
-				UpdateStatusChannel:  u.updateStatusAt,
-				CommandChannel:       u.commandChannel,
-				RetryHookChannel:     retryHookChan,
-				ApplicationChannel:   u.applicationChannel,
-				RunningStatusChannel: u.runningStatusChannel,
-				RunningStatusFunc:    u.runningStatusFunc,
-				ModelType:            u.modelType,
+				State:                         remotestate.NewAPIState(u.st),
+				LeadershipTracker:             u.leadershipTracker,
+				UnitTag:                       unitTag,
+				UpdateStatusChannel:           u.updateStatusAt,
+				CommandChannel:                u.commandChannel,
+				RetryHookChannel:              retryHookChan,
+				ApplicationChannel:            u.applicationChannel,
+				ContainerRunningStatusChannel: u.containerRunningStatusChannel,
+				ContainerRunningStatusFunc:    u.containerRunningStatusFunc,
+				ModelType:                     u.modelType,
 			})
 		if err != nil {
 			return errors.Trace(err)
@@ -383,7 +393,7 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 			return errors.Annotatef(err, "could not check reboot status for %q", unitTag)
 		}
 		if opState.Started && machineRebooted {
-			logger.Infof("reboot detected; triggering implicit start hook to notify charm")
+			u.logger.Infof("reboot detected; triggering implicit start hook to notify charm")
 			op, err := u.operationFactory.NewRunHook(hook.Info{Kind: hooks.Start})
 			if err != nil {
 				return errors.Trace(err)
@@ -406,15 +416,23 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 			ShouldRetryHooks:    u.hookRetryStrategy.ShouldRetry,
 			StartRetryHookTimer: retryHookTimer.Start,
 			StopRetryHookTimer:  retryHookTimer.Reset,
-			Actions:             actions.NewResolver(),
-			UpgradeSeries:       upgradeseries.NewResolver(),
-			Leadership:          uniterleadership.NewResolver(),
-			CreatedRelations:    relation.NewCreatedRelationResolver(u.relationStateTracker),
-			Relations:           relation.NewRelationResolver(u.relationStateTracker, u.unit),
-			Storage:             storage.NewResolver(u.storage, u.modelType),
+			Actions: actions.NewResolver(
+				u.logger.Child("actions"),
+			),
+			UpgradeSeries: upgradeseries.NewResolver(),
+			Leadership: uniterleadership.NewResolver(
+				u.logger.Child("leadership"),
+			),
+			CreatedRelations: relation.NewCreatedRelationResolver(u.relationStateTracker),
+			Relations:        relation.NewRelationResolver(u.relationStateTracker, u.unit),
+			Storage:          storage.NewResolver(u.storage, u.modelType),
 			Commands: runcommands.NewCommandsResolver(
 				u.commands, watcher.CommandCompleted,
 			),
+			Logger: u.logger,
+		}
+		if u.modelType == model.CAAS {
+			cfg.Container = container.NewResolver()
 		}
 		uniterResolver := NewUniterResolver(cfg)
 
@@ -431,6 +449,8 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 			CharmURL:             charmURL,
 			CharmModifiedVersion: charmModifiedVersion,
 			UpgradeSeriesStatus:  model.UpgradeSeriesNotStarted,
+			// CAAS models should trigger remote update of the charm every start.
+			OutdatedRemoteCharm: u.modelType == model.CAAS,
 		}
 		for err == nil {
 			err = resolver.Loop(resolver.LoopConfig{
@@ -490,7 +510,7 @@ func (u *Uniter) loop(unitTag names.UnitTag) (err error) {
 		u.runListener.UnregisterRunner(u.unit.Name())
 	}
 	u.localRunListener.UnregisterRunner(u.unit.Name())
-	logger.Infof("unit %q shutting down: %s", u.unit, err)
+	u.logger.Infof("unit %q shutting down: %s", u.unit, err)
 	return err
 }
 
@@ -532,7 +552,7 @@ func (u *Uniter) terminate() error {
 // For IAAS models, we want to terminate the agent, as each unit is run by
 // an individual agent for that unit.
 func (u *Uniter) stopUnitError() error {
-	logger.Debugf("u.modelType: %s", u.modelType)
+	u.logger.Debugf("u.modelType: %s", u.modelType)
 	if u.modelType == model.CAAS {
 		return ErrCAASUnitDead
 	}
@@ -575,17 +595,13 @@ func (u *Uniter) init(unitTag names.UnitTag) (err error) {
 	if err := tools.EnsureSymlinks(u.paths.ToolsDir, u.paths.ToolsDir, jujuc.CommandNames()); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(u.paths.State.RelationsDir, 0755); err != nil {
-		return errors.Trace(err)
-	}
 	relStateTracker, err := relation.NewRelationStateTracker(
 		relation.RelationStateTrackerConfig{
 			State:                u.st,
-			UnitTag:              unitTag,
+			Unit:                 u.unit,
 			Tracker:              u.leadershipTracker,
 			NewLeadershipContext: context.NewLeadershipContext,
 			CharmDir:             u.paths.State.CharmDir,
-			RelationsDir:         u.paths.State.RelationsDir,
 			Abort:                u.catacomb.Dying(),
 		})
 	if err != nil {
@@ -603,21 +619,21 @@ func (u *Uniter) init(unitTag names.UnitTag) (err error) {
 	}
 	u.storage = storageAttachments
 
-	// Only IAAS models require the uniter to install charms.
-	// For CAAS models this is done by the operator.
-	var deployer charm.Deployer
-	if u.modelType == model.IAAS {
-		if err := charm.ClearDownloads(u.paths.State.BundlesDir); err != nil {
-			logger.Warningf(err.Error())
-		}
-		deployer, err = charm.NewDeployer(
-			u.paths.State.CharmDir,
-			u.paths.State.DeployerDir,
-			charm.NewBundlesDir(u.paths.State.BundlesDir, u.downloader),
-		)
-		if err != nil {
-			return errors.Annotatef(err, "cannot create deployer")
-		}
+	if err := charm.ClearDownloads(u.paths.State.BundlesDir); err != nil {
+		u.logger.Warningf(err.Error())
+	}
+	logger := u.logger.Child("charm")
+	deployer, err := charm.NewDeployer(
+		u.paths.State.CharmDir,
+		u.paths.State.DeployerDir,
+		charm.NewBundlesDir(
+			u.paths.State.BundlesDir,
+			u.downloader,
+			logger),
+		logger,
+	)
+	if err != nil {
+		return errors.Annotatef(err, "cannot create deployer")
 	}
 	contextFactory, err := context.NewContextFactory(context.FactoryConfig{
 		State:            u.st,
@@ -647,6 +663,7 @@ func (u *Uniter) init(unitTag names.UnitTag) (err error) {
 		Callbacks:      &operationCallbacks{u},
 		Abort:          u.catacomb.Dying(),
 		MetricSpoolDir: u.paths.GetMetricsSpoolDir(),
+		Logger:         u.logger.Child("operation"),
 	})
 
 	charmURL, err := u.getApplicationCharmURL()
@@ -660,36 +677,28 @@ func (u *Uniter) init(unitTag names.UnitTag) (err error) {
 		CharmURL: charmURL,
 	}
 
-	if u.modelType == model.CAAS {
-		// For CAAS, run the install hook, but not the
-		// full install operation.
-		initialState = operation.State{
-			Hook: &hook.Info{Kind: hooks.Install},
-			Kind: operation.RunHook,
-			Step: operation.Queued,
-		}
-		if err := u.unit.SetCharmURL(charmURL); err != nil {
-			return errors.Trace(err)
-		}
-	}
-
 	operationExecutor, err := u.newOperationExecutor(operation.ExecutorConfig{
 		StateReadWriter: u.unit,
 		InitialState:    initialState,
 		AcquireLock:     u.acquireExecutionLock,
+		Logger:          u.logger.Child("operation"),
 	})
 	if err != nil {
 		return errors.Trace(err)
 	}
 	u.operationExecutor = operationExecutor
 
+	// Ensure we have an agent directory to to write the socket.
+	if err := os.MkdirAll(u.paths.State.BaseDir, 0755); err != nil {
+		return errors.Trace(err)
+	}
 	socket := u.paths.Runtime.LocalJujuRunSocket.Server
-	logger.Debugf("starting local juju-run listener on %v", socket)
-	u.localRunListener, err = NewRunListener(socket)
+	u.logger.Debugf("starting local juju-run listener on %v", socket)
+	u.localRunListener, err = NewRunListener(socket, u.logger)
 	if err != nil {
 		return errors.Annotate(err, "creating juju run listener")
 	}
-	rlw := NewRunListenerWrapper(u.localRunListener)
+	rlw := NewRunListenerWrapper(u.localRunListener, u.logger)
 	if err := u.catacomb.Add(rlw); err != nil {
 		return errors.Trace(err)
 	}

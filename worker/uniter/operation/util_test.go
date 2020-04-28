@@ -6,17 +6,18 @@ package operation_test
 import (
 	"sync"
 
+	corecharm "github.com/juju/charm/v7"
+	"github.com/juju/charm/v7/hooks"
 	"github.com/juju/errors"
 	"github.com/juju/testing"
 	utilexec "github.com/juju/utils/exec"
-	corecharm "gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/charm.v6/hooks"
 
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/core/relation"
 	"github.com/juju/juju/worker/uniter/charm"
 	"github.com/juju/juju/worker/uniter/hook"
 	"github.com/juju/juju/worker/uniter/operation"
+	"github.com/juju/juju/worker/uniter/remotestate"
 	"github.com/juju/juju/worker/uniter/runner"
 	"github.com/juju/juju/worker/uniter/runner/context"
 	"github.com/juju/juju/worker/uniter/runner/jujuc"
@@ -386,13 +387,15 @@ func (mock *MockRunAction) Call(actionName string) error {
 }
 
 type MockRunCommands struct {
-	gotCommands *string
-	response    *utilexec.ExecResponse
-	err         error
+	gotCommands    *string
+	gotRunLocation *runner.RunLocation
+	response       *utilexec.ExecResponse
+	err            error
 }
 
-func (mock *MockRunCommands) Call(commands string) (*utilexec.ExecResponse, error) {
+func (mock *MockRunCommands) Call(commands string, runLocation runner.RunLocation) (*utilexec.ExecResponse, error) {
 	mock.gotCommands = &commands
+	mock.gotRunLocation = &runLocation
 	return mock.response, mock.err
 }
 
@@ -422,8 +425,8 @@ func (r *MockRunner) RunAction(actionName string) (runner.HookHandlerType, error
 	return runner.ExplicitHookHandler, r.MockRunAction.Call(actionName)
 }
 
-func (r *MockRunner) RunCommands(commands string) (*utilexec.ExecResponse, error) {
-	return r.MockRunCommands.Call(commands)
+func (r *MockRunner) RunCommands(commands string, runLocation runner.RunLocation) (*utilexec.ExecResponse, error) {
+	return r.MockRunCommands.Call(commands, runLocation)
 }
 
 func (r *MockRunner) RunHook(hookName string) (runner.HookHandlerType, error) {
@@ -559,4 +562,26 @@ var someCommandArgs = operation.CommandArgs{
 	RelationId:      123,
 	RemoteUnitName:  "foo/456",
 	ForceRemoteUnit: true,
+	RunLocation:     runner.Workload,
+}
+
+type RemoteInitCallbacks struct {
+	operation.Callbacks
+	MockRemoteInit *MockRemoteInit
+}
+
+func (cb *RemoteInitCallbacks) RemoteInit(runningStatus remotestate.ContainerRunningStatus, abort <-chan struct{}) error {
+	return cb.MockRemoteInit.Call(runningStatus, abort)
+}
+
+type MockRemoteInit struct {
+	gotRunningStatus *remotestate.ContainerRunningStatus
+	gotAbort         <-chan struct{}
+	err              error
+}
+
+func (mock *MockRemoteInit) Call(runningStatus remotestate.ContainerRunningStatus, abort <-chan struct{}) error {
+	mock.gotRunningStatus = &runningStatus
+	mock.gotAbort = abort
+	return mock.err
 }

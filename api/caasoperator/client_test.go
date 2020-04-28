@@ -5,11 +5,11 @@ package caasoperator_test
 
 import (
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/version"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	basetesting "github.com/juju/juju/api/base/testing"
 	"github.com/juju/juju/api/caasoperator"
@@ -103,13 +103,13 @@ func (s *operatorSuite) TestCharm(c *gc.C) {
 func (s *operatorSuite) TestCharmError(c *gc.C) {
 	apiCaller := basetesting.APICallerFunc(func(objType string, version int, id, request string, arg, result interface{}) error {
 		*(result.(*params.ApplicationCharmResults)) = params.ApplicationCharmResults{
-			Results: []params.ApplicationCharmResult{{Error: &params.Error{Message: "bletch"}}},
+			Results: []params.ApplicationCharmResult{{Error: &params.Error{Code: params.CodeNotFound}}},
 		}
 		return nil
 	})
 	client := caasoperator.NewClient(apiCaller)
 	_, err := client.Charm("gitlab")
-	c.Assert(err, gc.ErrorMatches, "bletch")
+	c.Assert(err, jc.Satisfies, errors.IsNotFound)
 }
 
 func (s *operatorSuite) TestCharmInvalidApplicationName(c *gc.C) {

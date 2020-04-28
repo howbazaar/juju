@@ -20,9 +20,9 @@ import (
 	"github.com/juju/cmd"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	proxyutils "github.com/juju/proxy"
 	"github.com/juju/utils/exec"
-	"gopkg.in/juju/names.v3"
 
 	jujucmd "github.com/juju/juju/cmd"
 	agentcmd "github.com/juju/juju/cmd/jujud/agent"
@@ -221,6 +221,7 @@ func jujuDMain(args []string, ctx *cmd.Context) (code int, err error) {
 
 	jujud.Register(agentcmd.NewBootstrapCommand())
 	jujud.Register(agentcmd.NewCAASUnitInitCommand())
+	jujud.Register(agentcmd.NewModelCommand())
 
 	// TODO(katco-): AgentConf type is doing too much. The
 	// MachineAgent type has called out the separate concerns; the

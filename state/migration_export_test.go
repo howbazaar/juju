@@ -10,17 +10,17 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/juju/description"
+	"github.com/juju/charm/v7"
+	charmresource "github.com/juju/charm/v7/resource"
+	"github.com/juju/description/v2"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils/arch"
 	"github.com/juju/version"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	charmresource "gopkg.in/juju/charm.v6/resource"
 	"gopkg.in/juju/environschema.v1"
-	"gopkg.in/juju/names.v3"
 	"gopkg.in/macaroon.v2"
 
 	apitesting "github.com/juju/juju/api/testing"
@@ -537,6 +537,7 @@ func (s *MigrationExportSuite) assertMigrateApplications(c *gc.C, st *state.Stat
 		c.Assert(exported.CloudService().ProviderId(), gc.Equals, "provider-id")
 		c.Assert(exported.DesiredScale(), gc.Equals, 3)
 		c.Assert(exported.Placement(), gc.Equals, "")
+		c.Assert(exported.HasResources(), jc.IsTrue)
 		addresses := exported.CloudService().Addresses()
 		addr := addresses[0]
 		c.Assert(addr.Value(), gc.Equals, "192.168.1.1")

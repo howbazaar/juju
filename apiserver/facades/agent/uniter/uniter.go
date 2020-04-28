@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/clock"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/apiserver/common"
 	"github.com/juju/juju/apiserver/common/cloudspec"
@@ -867,7 +867,7 @@ func (u *UniterAPI) SetCharmURL(args params.EntitiesCharmURL) (params.ErrorResul
 				}
 				if err == nil {
 					// Wait for the change to propagate to the cache controller.
-					err = u.waitForControllerCharmURL(unit.Name(), curl.String())
+					err = u.waitForCacheCharmURL(unit.Name(), curl.String())
 				}
 			}
 		}
@@ -876,7 +876,7 @@ func (u *UniterAPI) SetCharmURL(args params.EntitiesCharmURL) (params.ErrorResul
 	return result, nil
 }
 
-func (u *UniterAPI) waitForControllerCharmURL(unit, curl string) error {
+func (u *UniterAPI) waitForCacheCharmURL(unit, curl string) error {
 	// One minute is excessively long, but the cache may need to refresh.
 	// In any normal operation, this should be sub-second, although if no changes
 	// were happening recently, it could be theoretically up to five seconds.

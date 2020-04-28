@@ -15,12 +15,12 @@ import (
 	"github.com/juju/cmd"
 	"github.com/juju/cmd/cmdtesting"
 	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	jujuos "github.com/juju/os"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	"github.com/juju/utils/exec"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	cmdutil "github.com/juju/juju/cmd/jujud/util"
 	"github.com/juju/juju/core/machinelock"
@@ -55,6 +55,7 @@ func (*RunTestSuite) TestArgParsing(c *gc.C) {
 		remoteUnit      string
 		remoteApp       string
 		forceRemoteUnit bool
+		operator        bool
 	}{{
 		title:    "no args",
 		errMatch: "missing unit-name",
@@ -123,6 +124,13 @@ func (*RunTestSuite) TestArgParsing(c *gc.C) {
 		relationId:      "mongodb:1",
 		remoteApp:       "app",
 		forceRemoteUnit: false,
+	}, {
+		title:      "unit id converted to tag",
+		args:       []string{"--operator", "foo/1", "command"},
+		unit:       names.NewUnitTag("foo/1"),
+		commands:   "command",
+		relationId: "",
+		operator:   true,
 	},
 	} {
 		c.Logf("%d: %s", i, test.title)
@@ -137,6 +145,7 @@ func (*RunTestSuite) TestArgParsing(c *gc.C) {
 			c.Assert(runCommand.remoteUnitName, gc.Equals, test.remoteUnit)
 			c.Assert(runCommand.remoteApplicationName, gc.Equals, test.remoteApp)
 			c.Assert(runCommand.forceRemoteUnit, gc.Equals, test.forceRemoteUnit)
+			c.Assert(runCommand.operator, gc.Equals, test.operator)
 		} else {
 			c.Assert(err, gc.ErrorMatches, test.errMatch)
 		}
@@ -340,7 +349,7 @@ func (s *RunTestSuite) runListenerForAgent(c *gc.C, agent string) {
 		socket.Network = "unix"
 		socket.Address = fmt.Sprintf("%s/run.socket", agentDir)
 	}
-	listener, err := uniter.NewRunListener(socket)
+	listener, err := uniter.NewRunListener(socket, loggo.GetLogger("test"))
 	c.Assert(err, jc.ErrorIsNil)
 	listener.RegisterRunner("foo/1", &mockRunner{c})
 	s.AddCleanup(func(*gc.C) {

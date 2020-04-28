@@ -5,10 +5,11 @@ package network_test
 
 import (
 	"github.com/juju/errors"
-	"github.com/juju/juju/core/network"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
+
+	"github.com/juju/juju/core/network"
 )
 
 type subnetSuite struct {
@@ -115,4 +116,96 @@ func (*subnetSuite) TestFilterInFanNetwork(c *gc.C) {
 		res := network.FilterInFanNetwork(t.subnets)
 		c.Check(res, gc.DeepEquals, t.expected)
 	}
+}
+
+func (*subnetSuite) TestSubnetInfosEquality(c *gc.C) {
+	s1 := network.SubnetInfos{
+		{ID: "1"},
+		{ID: "2"},
+	}
+
+	s2 := network.SubnetInfos{
+		{ID: "2"},
+		{ID: "1"},
+	}
+
+	s3 := append(s2, network.SubnetInfo{ID: "3"})
+
+	c.Check(s1.EqualTo(s2), jc.IsTrue)
+	c.Check(s1.EqualTo(s3), jc.IsFalse)
+}
+
+func (*subnetSuite) TestSubnetInfosSpaceIDs(c *gc.C) {
+	s := network.SubnetInfos{
+		{ID: "1", SpaceID: network.AlphaSpaceId},
+		{ID: "2", SpaceID: network.AlphaSpaceId},
+		{ID: "3", SpaceID: "666"},
+	}
+
+	c.Check(s.SpaceIDs().SortedValues(), jc.DeepEquals, []string{network.AlphaSpaceId, "666"})
+}
+
+func (*subnetSuite) TestSubnetInfosGetByUnderLayCIDR(c *gc.C) {
+	s := network.SubnetInfos{
+		{
+			ID:      "1",
+			FanInfo: &network.FanCIDRs{FanLocalUnderlay: "10.10.10.0/24"},
+		},
+		{
+			ID:      "2",
+			FanInfo: &network.FanCIDRs{FanLocalUnderlay: "20.20.20.0/24"},
+		},
+		{
+			ID:      "3",
+			FanInfo: &network.FanCIDRs{FanLocalUnderlay: "20.20.20.0/24"},
+		},
+	}
+
+	_, err := s.GetByUnderlayCIDR("invalid")
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+
+	overlays, err := s.GetByUnderlayCIDR(s[0].FanLocalUnderlay())
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(overlays, gc.DeepEquals, network.SubnetInfos{s[0]})
+
+	overlays, err = s.GetByUnderlayCIDR(s[1].FanLocalUnderlay())
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(overlays, gc.DeepEquals, network.SubnetInfos{s[1], s[2]})
+
+	overlays, err = s.GetByUnderlayCIDR("30.30.30.0/24")
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(overlays, gc.HasLen, 0)
+}
+
+func (*subnetSuite) TestSubnetInfosGetByCIDR(c *gc.C) {
+	s := network.SubnetInfos{
+		{ID: "1", CIDR: "10.10.10.0/24", ProviderId: "1"},
+		{ID: "2", CIDR: "10.10.10.0/24", ProviderId: "2"},
+		{ID: "3", CIDR: "20.20.20.0/24"},
+	}
+
+	_, err := s.GetByCIDR("invalid")
+	c.Check(err, jc.Satisfies, errors.IsNotValid)
+
+	subs, err := s.GetByCIDR("30.30.30.0/24")
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(subs, gc.HasLen, 0)
+
+	subs, err = s.GetByCIDR("10.10.10.0/24")
+	c.Assert(err, jc.ErrorIsNil)
+	c.Check(subs, gc.DeepEquals, s[:2])
+}
+
+func (*subnetSuite) TestSubnetInfosGetByID(c *gc.C) {
+	s := network.SubnetInfos{
+		{ID: "1"},
+		{ID: "2"},
+		{ID: "3"},
+	}
+
+	c.Check(s.GetByID("1"), gc.NotNil)
+	c.Check(s.ContainsID("1"), jc.IsTrue)
+
+	c.Check(s.GetByID("9"), gc.IsNil)
+	c.Check(s.ContainsID("9"), jc.IsFalse)
 }

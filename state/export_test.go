@@ -10,20 +10,20 @@ import (
 	"strconv"
 	"time" // Only used for time types.
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/clock"
 	"github.com/juju/clock/testclock"
-	"github.com/juju/description"
+	"github.com/juju/description/v2"
 	"github.com/juju/errors"
 	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	jujutxn "github.com/juju/txn"
 	txntesting "github.com/juju/txn/testing"
 	jutils "github.com/juju/utils"
+	"github.com/juju/worker/v2"
 	"github.com/kr/pretty"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
@@ -489,7 +489,7 @@ var (
 )
 
 func AssertAddressConversion(c *gc.C, netAddr network.SpaceAddress) {
-	addr := fromNetworkAddress(netAddr, OriginUnknown)
+	addr := fromNetworkAddress(netAddr, network.OriginUnknown)
 	newNetAddr := addr.networkAddress()
 	c.Assert(netAddr, gc.DeepEquals, newNetAddr)
 
@@ -498,7 +498,7 @@ func AssertAddressConversion(c *gc.C, netAddr network.SpaceAddress) {
 	for i := 0; i < size; i++ {
 		netAddrs[i] = netAddr
 	}
-	addrs := fromNetworkAddresses(netAddrs, OriginUnknown)
+	addrs := fromNetworkAddresses(netAddrs, network.OriginUnknown)
 	newNetAddrs := networkAddresses(addrs)
 	c.Assert(netAddrs, gc.DeepEquals, newNetAddrs)
 }
@@ -835,6 +835,11 @@ func GetApplicationCharmConfig(st *State, app *Application) *Settings {
 // given application in order to get the application config.
 func GetApplicationConfig(st *State, app *Application) *Settings {
 	return newSettings(st.db(), settingsC, app.applicationConfigKey())
+}
+
+// GetApplicationHasResources returns the app's HasResources value.
+func GetApplicationHasResources(app *Application) bool {
+	return app.doc.HasResources
 }
 
 // GetControllerSettings allows access to settings collection for

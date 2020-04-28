@@ -7,14 +7,14 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/clock"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	gitjujutesting "github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/juju/juju/cloud"
@@ -573,6 +573,25 @@ func (s *ModelSuite) TestAllEndpointBindings(c *gc.C) {
 	}
 	c.Assert(listBindings[0].AppName, gc.Equals, app.Name())
 	c.Assert(listBindings[0].Bindings.Map(), gc.DeepEquals, expected)
+}
+
+func (s *ModelSuite) TestAllEndpointBindingsSpaceNames(c *gc.C) {
+	oneSpace := s.Factory.MakeSpace(c, &factory.SpaceParams{
+		Name: "one", ProviderID: network.Id("provider"), IsPublic: true})
+	state.AddTestingApplicationWithBindings(
+		c, s.State, "wordpress", state.AddTestingCharm(c, s.State, "wordpress"),
+		map[string]string{"db": oneSpace.Id()})
+
+	spaceNames, err := s.State.AllEndpointBindingsSpaceNames()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(spaceNames.Size(), gc.Equals, 2)
+	c.Assert(spaceNames.SortedValues(), gc.DeepEquals, []string{"alpha", "one"})
+}
+
+func (s *ModelSuite) TestAllEndpointBindingsSpaceNamesWithoutAnySpaces(c *gc.C) {
+	spaceNames, err := s.State.AllEndpointBindingsSpaceNames()
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(spaceNames.Size(), gc.Equals, 0)
 }
 
 // createTestModelConfig returns a new model config and its UUID for testing.

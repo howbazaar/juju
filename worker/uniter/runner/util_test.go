@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/juju/clock/testclock"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	"github.com/juju/utils/fs"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/api"
 	"github.com/juju/juju/api/uniter"
@@ -60,7 +60,7 @@ func (s *ContextSuite) SetUpTest(c *gc.C) {
 
 	s.machine = nil
 
-	ch := s.AddTestingCharm(c, "wordpress")
+	ch := s.AddTestingCharm(c, "wordpress-nolimit")
 	s.application = s.AddTestingApplication(c, "u", ch)
 	s.unit = s.AddUnit(c, s.application)
 

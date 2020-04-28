@@ -8,8 +8,8 @@ import (
 	"strconv"
 
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/version"
-	"gopkg.in/juju/names.v3"
 	goyaml "gopkg.in/yaml.v2"
 
 	"github.com/juju/juju/controller"
@@ -60,6 +60,7 @@ type format_2_0Serialization struct {
 	SystemIdentity     string `yaml:"systemidentity,omitempty"`
 	MongoVersion       string `yaml:"mongoversion,omitempty"`
 	MongoMemoryProfile string `yaml:"mongomemoryprofile,omitempty"`
+	JujuDBSnapChannel  string `yaml:"juju-db-snap-channel,omitempty"`
 }
 
 func init() {
@@ -156,6 +157,9 @@ func (formatter_2_0) unmarshal(data []byte) (*configInternal, error) {
 	if format.MongoMemoryProfile != "" {
 		config.mongoMemoryProfile = format.MongoMemoryProfile
 	}
+	if format.JujuDBSnapChannel != "" {
+		config.jujuDBSnapChannel = format.JujuDBSnapChannel
+	}
 	return config, nil
 }
 
@@ -198,6 +202,9 @@ func (formatter_2_0) marshal(config *configInternal) ([]byte, error) {
 	}
 	if config.mongoMemoryProfile != "" {
 		format.MongoMemoryProfile = config.mongoMemoryProfile
+	}
+	if config.jujuDBSnapChannel != "" {
+		format.JujuDBSnapChannel = config.jujuDBSnapChannel
 	}
 	return goyaml.Marshal(format)
 }

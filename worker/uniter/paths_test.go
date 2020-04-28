@@ -7,11 +7,11 @@ import (
 	"crypto/tls"
 	"path/filepath"
 
+	"github.com/juju/names/v4"
 	jujuos "github.com/juju/os"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/juju/sockets"
 	"github.com/juju/juju/worker/uniter"
@@ -50,11 +50,8 @@ func (s *PathsSuite) TestWindows(c *gc.C) {
 		State: uniter.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			OperationsFile:  relAgent("state", "uniter"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
-			StorageDir:      relAgent("state", "storage"),
 			MetricsSpoolDir: relAgent("state", "spool", "metrics"),
 		},
 	})
@@ -82,11 +79,8 @@ func (s *PathsSuite) TestWorkerPathsWindows(c *gc.C) {
 		State: uniter.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			OperationsFile:  relAgent("state", "uniter"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
-			StorageDir:      relAgent("state", "storage"),
 			MetricsSpoolDir: relAgent("state", "spool", "metrics"),
 		},
 	})
@@ -114,11 +108,8 @@ func (s *PathsSuite) TestOther(c *gc.C) {
 		State: uniter.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			OperationsFile:  relAgent("state", "uniter"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
-			StorageDir:      relAgent("state", "storage"),
 			MetricsSpoolDir: relAgent("state", "spool", "metrics"),
 		},
 	})
@@ -157,11 +148,8 @@ func (s *PathsSuite) TestTCPRemote(c *gc.C) {
 		State: uniter.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			OperationsFile:  relAgent("state", "uniter"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
-			StorageDir:      relAgent("state", "storage"),
 			MetricsSpoolDir: relAgent("state", "spool", "metrics"),
 		},
 	})
@@ -188,11 +176,8 @@ func (s *PathsSuite) TestWorkerPaths(c *gc.C) {
 		State: uniter.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			OperationsFile:  relAgent("state", "uniter"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
-			StorageDir:      relAgent("state", "storage"),
 			MetricsSpoolDir: relAgent("state", "spool", "metrics"),
 		},
 	})

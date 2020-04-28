@@ -7,12 +7,12 @@ import (
 	stdtesting "testing"
 	"time"
 
+	"github.com/juju/charmrepo/v5/csclient"
 	"github.com/juju/collections/set"
 	"github.com/juju/loggo"
 	"github.com/juju/romulus"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charmrepo.v4/csclient"
 
 	"github.com/juju/juju/controller"
 	"github.com/juju/juju/testing"
@@ -729,4 +729,24 @@ func (s *ConfigSuite) TestAgentRateLimitRate(c *gc.C) {
 
 	cfg[controller.AgentRateLimitRate] = "500ms"
 	c.Assert(cfg.AgentRateLimitRate(), gc.Equals, 500*time.Millisecond)
+}
+
+func (s *ConfigSuite) TestJujuDBSnapChannel(c *gc.C) {
+	cfg, err := controller.NewConfig(
+		testing.ControllerTag.Id(),
+		testing.CACert,
+		map[string]interface{}{},
+	)
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(cfg.JujuDBSnapChannel(), gc.Equals, controller.DefaultJujuDBSnapChannel)
+
+	cfg, err = controller.NewConfig(
+		testing.ControllerTag.Id(),
+		testing.CACert,
+		map[string]interface{}{
+			"juju-db-snap-channel": "latest/candidate",
+		},
+	)
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(cfg.JujuDBSnapChannel(), gc.Equals, "latest/candidate")
 }

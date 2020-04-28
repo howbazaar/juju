@@ -4,8 +4,8 @@
 package resolver
 
 import (
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
-	"gopkg.in/juju/charm.v6"
 
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/worker/uniter/operation"
@@ -95,4 +95,11 @@ type LocalState struct {
 	// UpgradeSeriesStatus is the current state of any currently running
 	// upgrade series.
 	UpgradeSeriesStatus model.UpgradeSeriesStatus
+
+	// ContainerRunningStatus is the current state of remote containers for CAAS.
+	ContainerRunningStatus *remotestate.ContainerRunningStatus
+
+	// OutdatedRemoteCharm is true when an upgrade has happened but the remotestate
+	// needs an update.
+	OutdatedRemoteCharm bool
 }

@@ -14,9 +14,9 @@ import (
 	"sync"
 
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/utils/exec"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1"
+	"github.com/juju/worker/v2"
 	"gopkg.in/tomb.v2"
 	"gopkg.in/yaml.v2"
 
@@ -26,6 +26,7 @@ import (
 	"github.com/juju/juju/juju/sockets"
 	"github.com/juju/juju/worker/uniter/operation"
 	"github.com/juju/juju/worker/uniter/runcommands"
+	"github.com/juju/juju/worker/uniter/runner"
 )
 
 const JujuRunEndpoint = "JujuRunServer.RunCommands"
@@ -48,6 +49,9 @@ type RunCommandsArgs struct {
 	UnitName string
 	// Token is the unit token when run under CAAS environments for auth.
 	Token string
+	// Operator is true when the command should be run on the operator.
+	// This only affects k8s workload charms.
+	Operator bool
 }
 
 // A CommandRunner is something that will actually execute the commands and
@@ -61,6 +65,8 @@ type CommandRunner interface {
 // setting up the rpc server on that net connection. Also starts the go routine
 // that listens and hands off the work.
 type RunListener struct {
+	logger Logger
+
 	mu sync.Mutex
 
 	socket *sockets.Socket
@@ -81,12 +87,13 @@ type RunListener struct {
 // socket or named pipe passed in. If a valid RunListener is returned, is
 // has the go routine running, and should be closed by the creator
 // when they are done with it.
-func NewRunListener(socket sockets.Socket) (*RunListener, error) {
+func NewRunListener(socket sockets.Socket, logger Logger) (*RunListener, error) {
 	listener, err := sockets.Listen(socket)
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
 	runListener := &RunListener{
+		logger:         logger,
 		listener:       listener,
 		commandRunners: make(map[string]CommandRunner),
 		server:         rpc.NewServer(),
@@ -96,7 +103,7 @@ func NewRunListener(socket sockets.Socket) (*RunListener, error) {
 	if socket.Network == "tcp" || socket.TLSConfig != nil {
 		runListener.requiresAuth = true
 	}
-	if err := runListener.server.Register(&JujuRunServer{runListener}); err != nil {
+	if err := runListener.server.Register(&JujuRunServer{runListener, logger}); err != nil {
 		return nil, errors.Trace(err)
 	}
 	go runListener.Run()
@@ -106,7 +113,7 @@ func NewRunListener(socket sockets.Socket) (*RunListener, error) {
 // Run accepts new connections until it encounters an error, or until Close is
 // called, and then blocks until all existing connections have been closed.
 func (r *RunListener) Run() (err error) {
-	logger.Debugf("juju-run listener running")
+	r.logger.Debugf("juju-run listener running")
 	var conn net.Conn
 	for {
 		conn, err = r.listener.Accept()
@@ -119,7 +126,7 @@ func (r *RunListener) Run() (err error) {
 			r.wg.Done()
 		}(conn)
 	}
-	logger.Debugf("juju-run listener stopping")
+	r.logger.Debugf("juju-run listener stopping")
 	select {
 	case <-r.closing:
 		// Someone has called Close(), so it is overwhelmingly likely that
@@ -138,7 +145,7 @@ func (r *RunListener) Run() (err error) {
 func (r *RunListener) Close() error {
 	defer func() {
 		<-r.closed
-		logger.Debugf("juju-run listener stopped")
+		r.logger.Debugf("juju-run listener stopped")
 	}()
 	close(r.closing)
 	return r.listener.Close()
@@ -160,7 +167,7 @@ func (r *RunListener) UnregisterRunner(unitName string) {
 
 // RunCommands executes the supplied commands in a hook context.
 func (r *RunListener) RunCommands(args RunCommandsArgs) (results *exec.ExecResponse, err error) {
-	logger.Debugf("run commands on unit %v: %s", args.UnitName, args.Commands)
+	r.logger.Debugf("run commands on unit %v: %s", args.UnitName, args.Commands)
 	if args.UnitName == "" {
 		return nil, errors.New("missing unit name running command")
 	}
@@ -196,8 +203,8 @@ func (r *RunListener) RunCommands(args RunCommandsArgs) (results *exec.ExecRespo
 // listener when the worker is killed. The Wait() method will never return
 // an error -- NewRunListener just drops the Run error on the floor and that's
 // not what I'm fixing here.
-func NewRunListenerWrapper(rl *RunListener) worker.Worker {
-	rlw := &runListenerWrapper{rl: rl}
+func NewRunListenerWrapper(rl *RunListener, logger Logger) worker.Worker {
+	rlw := &runListenerWrapper{logger: logger, rl: rl}
 	rlw.tomb.Go(func() error {
 		defer rlw.tearDown()
 		<-rlw.tomb.Dying()
@@ -207,13 +214,14 @@ func NewRunListenerWrapper(rl *RunListener) worker.Worker {
 }
 
 type runListenerWrapper struct {
-	tomb tomb.Tomb
-	rl   *RunListener
+	logger Logger
+	tomb   tomb.Tomb
+	rl     *RunListener
 }
 
 func (rlw *runListenerWrapper) tearDown() {
 	if err := rlw.rl.Close(); err != nil {
-		logger.Warningf("error closing runlistener: %v", err)
+		rlw.logger.Warningf("error closing runlistener: %v", err)
 	}
 }
 
@@ -231,12 +239,13 @@ func (rlw *runListenerWrapper) Wait() error {
 // the rpc connection.
 type JujuRunServer struct {
 	runner CommandRunner
+	logger Logger
 }
 
 // RunCommands delegates the actual running to the runner and populates the
 // response structure.
 func (r *JujuRunServer) RunCommands(args RunCommandsArgs, result *exec.ExecResponse) error {
-	logger.Debugf("RunCommands: %+v", args)
+	r.logger.Debugf("RunCommands: %+v", args)
 	runResult, err := r.runner.RunCommands(args)
 	if err != nil {
 		return errors.Annotate(err, "r.runner.RunCommands")
@@ -309,6 +318,11 @@ func (c *ChannelCommandRunner) RunCommands(args RunCommandsArgs) (results *exec.
 		}
 	}
 
+	runLocation := runner.Workload
+	if args.Operator {
+		runLocation = runner.Operator
+	}
+
 	id := c.config.Commands.AddCommand(
 		operation.CommandArgs{
 			Commands:       args.Commands,
@@ -316,6 +330,7 @@ func (c *ChannelCommandRunner) RunCommands(args RunCommandsArgs) (results *exec.
 			RemoteUnitName: args.RemoteUnitName,
 			// TODO(jam): 2019-10-24 Include RemoteAppName
 			ForceRemoteUnit: args.ForceRemoteUnit,
+			RunLocation:     runLocation,
 		},
 		responseFunc,
 	)

@@ -6,16 +6,17 @@ package uniter
 import (
 	"fmt"
 
+	corecharm "github.com/juju/charm/v7"
+	"github.com/juju/charm/v7/hooks"
 	"github.com/juju/errors"
-	corecharm "gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/charm.v6/hooks"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/core/status"
 	"github.com/juju/juju/worker/uniter/charm"
 	"github.com/juju/juju/worker/uniter/hook"
+	"github.com/juju/juju/worker/uniter/remotestate"
 	"github.com/juju/juju/worker/uniter/runner"
 )
 
@@ -138,4 +139,15 @@ func (opc *operationCallbacks) SetExecutingStatus(message string) error {
 // SetUpgradeSeriesStatus is part of the operation.Callbacks interface.
 func (opc *operationCallbacks) SetUpgradeSeriesStatus(upgradeSeriesStatus model.UpgradeSeriesStatus, reason string) error {
 	return setUpgradeSeriesStatus(opc.u, upgradeSeriesStatus, reason)
+}
+
+// RemoteInit is part of the operation.Callbacks interface.
+func (opc *operationCallbacks) RemoteInit(runningStatus remotestate.ContainerRunningStatus, abort <-chan struct{}) error {
+	if opc.u.modelType != model.CAAS {
+		return nil
+	}
+	if opc.u.remoteInitFunc == nil {
+		return nil
+	}
+	return opc.u.remoteInitFunc(runningStatus, abort)
 }

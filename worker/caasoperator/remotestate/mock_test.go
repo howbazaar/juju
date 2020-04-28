@@ -6,8 +6,8 @@ package remotestate_test
 import (
 	"sync"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
-	"gopkg.in/juju/charm.v6"
 
 	caasoperatorapi "github.com/juju/juju/api/caasoperator"
 	"github.com/juju/juju/core/watcher"
@@ -56,6 +56,7 @@ func newMockNotifyWatcher() *mockNotifyWatcher {
 type mockNotifyWatcher struct {
 	*mockWatcher
 	changes chan struct{}
+	err     error
 }
 
 func (w *mockNotifyWatcher) Changes() watcher.NotifyChannel {
@@ -70,7 +71,7 @@ func (s *mockApplicationWatcher) Watch(application string) (watcher.NotifyWatche
 	if application != "gitlab" {
 		return nil, errors.NotFoundf(application)
 	}
-	return s.watcher, nil
+	return s.watcher, s.watcher.err
 }
 
 type mockCharmGetter struct {

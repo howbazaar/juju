@@ -7455,6 +7455,17 @@
                         }
                     }
                 },
+                "ClearApplicationsResources": {
+                    "type": "object",
+                    "properties": {
+                        "Params": {
+                            "$ref": "#/definitions/Entities"
+                        },
+                        "Result": {
+                            "$ref": "#/definitions/ErrorResults"
+                        }
+                    }
+                },
                 "DeploymentMode": {
                     "type": "object",
                     "properties": {
@@ -18369,6 +18380,9 @@
                         "no-auto-start": {
                             "type": "boolean"
                         },
+                        "origin": {
+                            "type": "string"
+                        },
                         "parent-interface-name": {
                             "type": "string"
                         },
@@ -21431,6 +21445,9 @@
                         },
                         "no-auto-start": {
                             "type": "boolean"
+                        },
+                        "origin": {
+                            "type": "string"
                         },
                         "parent-interface-name": {
                             "type": "string"
@@ -27817,6 +27834,9 @@
                         },
                         "no-auto-start": {
                             "type": "boolean"
+                        },
+                        "origin": {
+                            "type": "string"
                         },
                         "parent-interface-name": {
                             "type": "string"

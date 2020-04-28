@@ -9,11 +9,11 @@ import (
 
 	"github.com/juju/clock"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	"github.com/juju/retry"
 	"github.com/juju/utils"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1"
-	"gopkg.in/juju/worker.v1/catacomb"
+	"github.com/juju/worker/v2"
+	"github.com/juju/worker/v2/catacomb"
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/api/caasoperatorprovisioner"
@@ -114,7 +114,10 @@ func (p *provisioner) loop() error {
 			var newApps []string
 			for _, app := range apps {
 				appLife, err := p.provisionerFacade.Life(app)
-				if errors.IsNotFound(err) || appLife == life.Dead {
+				if err != nil && !errors.IsNotFound(err) {
+					return errors.Trace(err)
+				}
+				if err != nil || appLife == life.Dead {
 					p.logger.Debugf("deleting operator for %q", app)
 					if err := p.broker.DeleteOperator(app); err != nil {
 						return errors.Annotatef(err, "failed to stop operator for %q", app)

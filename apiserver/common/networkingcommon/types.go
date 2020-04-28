@@ -8,7 +8,7 @@ import (
 
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/apiserver/common"
 	"github.com/juju/juju/apiserver/params"
@@ -114,7 +114,7 @@ type NetworkBacking interface {
 	SetAvailabilityZones([]providercommon.AvailabilityZone) error
 
 	// AddSpace creates a space
-	AddSpace(Name string, ProviderId corenetwork.Id, Subnets []string, Public bool) error
+	AddSpace(string, corenetwork.Id, []string, bool) (BackingSpace, error)
 
 	// AllSpaces returns all known Juju network spaces.
 	AllSpaces() ([]BackingSpace, error)
@@ -129,14 +129,6 @@ type NetworkBacking interface {
 
 	// ModelTag returns the tag of the model this state is associated to.
 	ModelTag() names.ModelTag
-
-	// SaveProviderSubnets loads subnets into state.
-	// Currently it does not delete removed subnets.
-	SaveProviderSubnets(subnets []corenetwork.SubnetInfo, spaceID string) error
-
-	// SaveProviderSpaces loads providerSpaces into state.
-	// Currently it does not delete removed spaces.
-	SaveProviderSpaces(providerSpaces []corenetwork.SpaceInfo) error
 }
 
 // BackingSubnetToParamsSubnetV2 converts a network backing subnet to the new
@@ -184,7 +176,7 @@ func NetworkInterfacesToStateArgs(ifaces []corenetwork.InterfaceInfo) (
 			args := state.LinkLayerDeviceArgs{
 				Name:        iface.InterfaceName,
 				MTU:         mtu,
-				ProviderID:  corenetwork.Id(iface.ProviderId),
+				ProviderID:  iface.ProviderId,
 				Type:        corenetwork.LinkLayerDeviceType(iface.InterfaceType),
 				MACAddress:  iface.MACAddress,
 				IsAutoStart: !iface.NoAutoStart,
@@ -228,9 +220,9 @@ func NetworkInterfacesToStateArgs(ifaces []corenetwork.InterfaceInfo) (
 
 		addr := state.LinkLayerDeviceAddress{
 			DeviceName:        iface.InterfaceName,
-			ProviderID:        corenetwork.Id(iface.ProviderAddressId),
-			ProviderNetworkID: corenetwork.Id(iface.ProviderNetworkId),
-			ProviderSubnetID:  corenetwork.Id(iface.ProviderSubnetId),
+			ProviderID:        iface.ProviderAddressId,
+			ProviderNetworkID: iface.ProviderNetworkId,
+			ProviderSubnetID:  iface.ProviderSubnetId,
 			ConfigMethod:      derivedConfigMethod,
 			CIDRAddress:       cidrAddress,
 			DNSServers:        iface.DNSServers.ToIPAddresses(),

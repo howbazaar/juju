@@ -10,10 +10,10 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	jtesting "github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/apiserver/common"
 	"github.com/juju/juju/apiserver/common/networkingcommon"
@@ -617,6 +617,10 @@ func (sb *stubBacking) MovingSubnet(string) (spaces.MovingSubnet, error) {
 	panic("should not be called")
 }
 
+func (sb *stubBacking) AllSpaceInfos() (network.SpaceInfos, error) {
+	panic("should not be called")
+}
+
 // LegacySuite is deprecated testing suite that uses stubs.
 // TODO (manadart 2020-03-24): These should be phased out in favour of the
 // mock-based tests.
@@ -624,9 +628,9 @@ type LegacySuite struct {
 	testing.BaseSuite
 	apiservertesting.StubNetwork
 
-	resources  *common.Resources
-	authorizer apiservertesting.FakeAuthorizer
-	facade     *spaces.API
+	resources *common.Resources
+	auth      apiservertesting.FakeAuthorizer
+	facade    *spaces.API
 
 	callContext  context.ProviderCallContext
 	blockChecker mockBlockChecker
@@ -654,7 +658,7 @@ func (s *LegacySuite) SetUpTest(c *gc.C) {
 	)
 
 	s.resources = common.NewResources()
-	s.authorizer = apiservertesting.FakeAuthorizer{
+	s.auth = apiservertesting.FakeAuthorizer{
 		Tag:        names.NewUserTag("admin"),
 		Controller: false,
 	}
@@ -662,12 +666,13 @@ func (s *LegacySuite) SetUpTest(c *gc.C) {
 	s.callContext = context.NewCloudCallContext()
 	s.blockChecker = mockBlockChecker{}
 	var err error
-	s.facade, err = spaces.NewAPIWithBacking(
-		&stubBacking{apiservertesting.BackingInstance},
-		&s.blockChecker,
-		s.callContext,
-		s.resources, s.authorizer, nil,
-	)
+	s.facade, err = spaces.NewAPIWithBacking(spaces.APIConfig{
+		Backing:    &stubBacking{apiservertesting.BackingInstance},
+		Check:      &s.blockChecker,
+		Context:    s.callContext,
+		Resources:  s.resources,
+		Authorizer: s.auth,
+	})
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(s.facade, gc.NotNil)
 }
@@ -681,27 +686,28 @@ func (s *LegacySuite) TearDownTest(c *gc.C) {
 
 func (s *LegacySuite) TestNewAPIWithBacking(c *gc.C) {
 	// Clients are allowed.
-	facade, err := spaces.NewAPIWithBacking(
-		&stubBacking{apiservertesting.BackingInstance},
-		&s.blockChecker,
-		s.callContext,
-		s.resources, s.authorizer, nil,
-	)
+	facade, err := spaces.NewAPIWithBacking(spaces.APIConfig{
+		Backing:    &stubBacking{apiservertesting.BackingInstance},
+		Check:      &s.blockChecker,
+		Context:    s.callContext,
+		Resources:  s.resources,
+		Authorizer: s.auth,
+	})
 	c.Assert(err, jc.ErrorIsNil)
 	c.Assert(facade, gc.NotNil)
 	// No calls so far.
 	apiservertesting.CheckMethodCalls(c, apiservertesting.SharedStub)
 
 	// Agents are not allowed
-	agentAuthorizer := s.authorizer
+	agentAuthorizer := s.auth
 	agentAuthorizer.Tag = names.NewMachineTag("42")
-	facade, err = spaces.NewAPIWithBacking(
-		&stubBacking{apiservertesting.BackingInstance},
-		&s.blockChecker,
-		context.NewCloudCallContext(),
-		s.resources,
-		agentAuthorizer, nil,
-	)
+	facade, err = spaces.NewAPIWithBacking(spaces.APIConfig{
+		Backing:    &stubBacking{apiservertesting.BackingInstance},
+		Check:      &s.blockChecker,
+		Context:    context.NewCloudCallContext(),
+		Resources:  s.resources,
+		Authorizer: agentAuthorizer,
+	})
 	c.Assert(err, jc.DeepEquals, common.ErrPerm)
 	c.Assert(facade, gc.IsNil)
 	// No calls so far.
@@ -1034,24 +1040,6 @@ func (s *LegacySuite) TestListSpacesNotSupportedError(c *gc.C) {
 	c.Assert(err, gc.ErrorMatches, "spaces not supported")
 }
 
-func (s *LegacySuite) TestReloadSpacesNotSupportedError(c *gc.C) {
-	apiservertesting.SharedStub.SetErrors(
-		nil,                            // Backing.ModelConfig()
-		nil,                            // Backing.CloudSpec()
-		nil,                            // Provider.Open()
-		errors.NotSupportedf("spaces"), // ZonedNetworkingEnviron.supportsSpaces()
-	)
-	err := s.facade.ReloadSpaces()
-	c.Assert(err, gc.ErrorMatches, "spaces not supported")
-}
-
-func (s *LegacySuite) TestReloadSpacesBlocked(c *gc.C) {
-	s.blockChecker.SetErrors(common.ServerError(common.OperationBlockedError("test block")))
-	err := s.facade.ReloadSpaces()
-	c.Assert(err, gc.ErrorMatches, "test block")
-	c.Assert(err, jc.Satisfies, params.IsCodeOperationBlocked)
-}
-
 func (s *LegacySuite) TestCreateSpacesBlocked(c *gc.C) {
 	s.blockChecker.SetErrors(common.ServerError(common.OperationBlockedError("test block")))
 	_, err := s.facade.CreateSpaces(params.CreateSpacesParams{})
@@ -1102,21 +1090,6 @@ func (s *LegacySuite) TestCreateSpacesAPIv4FailTag(c *gc.C) {
 	c.Assert(err, gc.IsNil)
 	c.Assert(len(results.Results), gc.Equals, 1)
 	c.Assert(results.Results[0].Error, gc.ErrorMatches, `"bar" is not valid SubnetTag`)
-}
-
-func (s *LegacySuite) TestReloadSpacesUserDenied(c *gc.C) {
-	agentAuthorizer := s.authorizer
-	agentAuthorizer.Tag = names.NewUserTag("regular")
-	facade, err := spaces.NewAPIWithBacking(
-		&stubBacking{apiservertesting.BackingInstance},
-		&s.blockChecker,
-		context.NewCloudCallContext(),
-		s.resources, agentAuthorizer, nil,
-	)
-	c.Assert(err, jc.ErrorIsNil)
-	err = facade.ReloadSpaces()
-	c.Check(err, gc.ErrorMatches, "permission denied")
-	apiservertesting.CheckMethodCalls(c, apiservertesting.SharedStub)
 }
 
 func (s *LegacySuite) TestSupportsSpacesModelConfigError(c *gc.C) {

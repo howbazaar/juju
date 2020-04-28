@@ -6,10 +6,10 @@ package caasoperator_test
 import (
 	"path/filepath"
 
+	"github.com/juju/names/v4"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/worker/caasoperator"
 )
@@ -38,7 +38,6 @@ func (s *PathsSuite) TestPaths(c *gc.C) {
 		State: caasoperator.StatePaths{
 			BaseDir:         relAgent(),
 			CharmDir:        relAgent("charm"),
-			RelationsDir:    relAgent("state", "relations"),
 			BundlesDir:      relAgent("state", "bundles"),
 			DeployerDir:     relAgent("state", "deployer"),
 			OperationsFile:  relAgent("state", "operator"),

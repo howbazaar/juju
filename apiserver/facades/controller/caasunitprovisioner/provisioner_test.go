@@ -7,13 +7,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/juju/charm/v7"
 	"github.com/juju/clock"
 	"github.com/juju/clock/testclock"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/worker/v2/workertest"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1/workertest"
 
 	"github.com/juju/juju/apiserver/common"
 	"github.com/juju/juju/apiserver/facades/controller/caasunitprovisioner"
@@ -375,6 +375,27 @@ func (s *CAASProvisionerSuite) TestApplicationConfig(c *gc.C) {
 		Message: `"unit-gitlab-0" is not a valid application tag`,
 	})
 	c.Assert(results.Results[0].Config, jc.DeepEquals, map[string]interface{}{"foo": "bar"})
+}
+
+func (s *CAASProvisionerSuite) TestClearApplicationsResources(c *gc.C) {
+	results, err := s.facade.ClearApplicationsResources(params.Entities{
+		Entities: []params.Entity{
+			{Tag: "application-gitlab"},
+			{Tag: "unit-gitlab-0"},
+		},
+	})
+	c.Assert(err, jc.ErrorIsNil)
+	c.Assert(results, jc.DeepEquals, params.ErrorResults{
+		Results: []params.ErrorResult{
+			{},
+			{
+				Error: &params.Error{
+					Message: `"unit-gitlab-0" is not a valid application tag`,
+				},
+			}},
+	})
+	s.st.CheckCallNames(c, "Application")
+	s.st.application.CheckCallNames(c, "ClearResources")
 }
 
 func strPtr(s string) *string {

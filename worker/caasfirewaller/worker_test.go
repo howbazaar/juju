@@ -10,8 +10,8 @@ import (
 	"github.com/juju/loggo"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/worker/v2/workertest"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/worker.v1/workertest"
 
 	"github.com/juju/juju/core/application"
 	"github.com/juju/juju/core/life"
@@ -239,6 +239,32 @@ func (s *WorkerSuite) TestRemoveApplicationStopsWatchingApplication(c *gc.C) {
 
 	err = workertest.CheckKilled(c, s.applicationGetter.appWatcher)
 	c.Assert(err, jc.ErrorIsNil)
+}
+
+func (s *WorkerSuite) TestRemoveApplicationStopsWorker(c *gc.C) {
+	// Set up the errors before triggering any events to avoid racing
+	// with the worker loop. First time around the loop the
+	// application's alive, then it's gone.
+	//s.lifeGetter.life = life.Dead
+	s.applicationGetter.SetErrors(nil, nil, errors.NotFoundf("application"))
+
+	w, err := caasfirewaller.NewWorker(s.config)
+	c.Assert(err, jc.ErrorIsNil)
+	defer workertest.CleanKill(c, w)
+
+	select {
+	case s.applicationChanges <- []string{"gitlab"}:
+	case <-time.After(coretesting.LongWait):
+		c.Fatal("timed out sending applications change")
+	}
+
+	s.applicationGetter.exposed = true
+	s.sendApplicationExposedChange(c)
+	select {
+	case <-s.serviceExposed:
+		c.Fatal("removed application should not be exposed")
+	case <-time.After(coretesting.ShortWait):
+	}
 }
 
 func (s *WorkerSuite) TestWatcherErrorStopsWorker(c *gc.C) {

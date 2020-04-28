@@ -5,7 +5,7 @@ package caasunitprovisioner
 
 import (
 	"github.com/juju/errors"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 
 	"github.com/juju/juju/api/base"
 	apiwatcher "github.com/juju/juju/api/watcher"
@@ -285,7 +285,7 @@ func (c *Client) Life(entityName string) (life.Value, error) {
 	if err := results.Results[0].Error; err != nil {
 		return "", maybeNotFound(err)
 	}
-	return life.Value(results.Results[0].Life), nil
+	return results.Results[0].Life, nil
 }
 
 // maybeNotFound returns an error satisfying errors.IsNotFound
@@ -350,4 +350,21 @@ func (c *Client) SetOperatorStatus(appName string, status status.Status, message
 		return err
 	}
 	return result.OneError()
+}
+
+// ClearApplicationResources clears the flag which indicates an
+// application still has resources in the cluster.
+func (c *Client) ClearApplicationResources(appName string) error {
+	var result params.ErrorResults
+	args := params.Entities{Entities: []params.Entity{{Tag: names.NewApplicationTag(appName).String()}}}
+	if err := c.facade.FacadeCall("ClearApplicationsResources", args, &result); err != nil {
+		return errors.Trace(err)
+	}
+	if len(result.Results) != len(args.Entities) {
+		return errors.Errorf("expected %d result(s), got %d", len(args.Entities), len(result.Results))
+	}
+	if result.Results[0].Error == nil {
+		return nil
+	}
+	return maybeNotFound(result.Results[0].Error)
 }

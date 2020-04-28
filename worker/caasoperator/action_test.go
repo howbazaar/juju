@@ -10,11 +10,12 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	jc "github.com/juju/testing/checkers"
 	"github.com/juju/utils"
 	utilexec "github.com/juju/utils/exec"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
 	k8sexec "k8s.io/client-go/util/exec"
 
 	"github.com/juju/juju/caas/kubernetes/provider/exec"
@@ -69,7 +70,8 @@ func (s *actionSuite) assertRunnerExecFunc(c *gc.C, errMsg string) {
 	err := utils.AtomicWriteFile(filepath.Join(operatorPaths.GetToolsDir(), "jujud"), []byte(""), 0600)
 	c.Assert(err, jc.ErrorIsNil)
 
-	runnerExecFunc := caasoperator.GetNewRunnerExecutor(s.executor)(s.unitAPI, unitPaths)
+	logger := loggo.GetLogger("test")
+	runnerExecFunc := caasoperator.GetNewRunnerExecutor(logger, s.executor)(s.unitAPI, unitPaths)
 	cancel := make(<-chan struct{}, 1)
 	stdout := bytes.NewBufferString("")
 	stderr := bytes.NewBufferString("")

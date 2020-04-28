@@ -4,9 +4,8 @@
 package uniter
 
 import (
+	"github.com/juju/charm/v7/hooks"
 	"github.com/juju/errors"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/charm.v6/hooks"
 
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/core/life"
@@ -32,6 +31,8 @@ type ResolverConfig struct {
 	Relations           resolver.Resolver
 	Storage             resolver.Resolver
 	Commands            resolver.Resolver
+	Container           resolver.Resolver
+	Logger              Logger
 }
 
 type uniterResolver struct {
@@ -47,16 +48,6 @@ func NewUniterResolver(cfg ResolverConfig) resolver.Resolver {
 	}
 }
 
-func (s *uniterResolver) upgradeOpForModel(opFactory operation.Factory, curl *charm.URL) (operation.Operation, error) {
-	// Only IAAS models will react to a charm modified change.
-	// For CAAS models, the operator will unpack the new charm and
-	// inform the uniter workers to run the upgrade hook.
-	if s.config.ModelType == model.IAAS {
-		return opFactory.NewUpgrade(curl)
-	}
-	return opFactory.NewNoOpUpgrade(curl)
-}
-
 func (s *uniterResolver) NextOp(
 	localState resolver.LocalState,
 	remoteState remotestate.Snapshot,
@@ -65,6 +56,7 @@ func (s *uniterResolver) NextOp(
 	if remoteState.Life == life.Dead || localState.Removed {
 		return nil, resolver.ErrTerminate
 	}
+	logger := s.config.Logger
 
 	// Operations for series-upgrade need to be resolved early,
 	// in particular because no other operations should be run when the unit
@@ -83,7 +75,7 @@ func (s *uniterResolver) NextOp(
 		}
 		// continue upgrading the charm
 		logger.Infof("resuming charm upgrade")
-		return s.upgradeOpForModel(opFactory, localState.CharmURL)
+		return opFactory.NewUpgrade(localState.CharmURL)
 	}
 
 	if localState.Restart {
@@ -109,6 +101,13 @@ func (s *uniterResolver) NextOp(
 	op, err = s.config.Leadership.NextOp(localState, remoteState, opFactory)
 	if errors.Cause(err) != resolver.ErrNoOperation {
 		return op, err
+	}
+
+	if s.config.Container != nil {
+		op, err = s.config.Container.NextOp(localState, remoteState, opFactory)
+		if errors.Cause(err) != resolver.ErrNoOperation {
+			return op, err
+		}
 	}
 
 	op, err = s.config.Actions.NextOp(localState, remoteState, opFactory)
@@ -173,16 +172,10 @@ func (s *uniterResolver) nextOpConflicted(
 		if err := s.config.ClearResolved(); err != nil {
 			return nil, errors.Trace(err)
 		}
-		if s.config.ModelType == model.IAAS {
-			return opFactory.NewResolvedUpgrade(localState.CharmURL)
-		}
-		return opFactory.NewNoOpUpgrade(localState.CharmURL)
+		return opFactory.NewResolvedUpgrade(localState.CharmURL)
 	}
-	if remoteState.ForceCharmUpgrade && charmModified(localState, remoteState) {
-		if s.config.ModelType == model.IAAS {
-			return opFactory.NewRevertUpgrade(remoteState.CharmURL)
-		}
-		return opFactory.NewNoOpUpgrade(remoteState.CharmURL)
+	if remoteState.ForceCharmUpgrade && s.charmModified(localState, remoteState) {
+		return opFactory.NewRevertUpgrade(remoteState.CharmURL)
 	}
 	return nil, resolver.ErrWaiting
 }
@@ -198,8 +191,8 @@ func (s *uniterResolver) nextOpHookError(
 		return nil, errors.Trace(err)
 	}
 
-	if remoteState.ForceCharmUpgrade && charmModified(localState, remoteState) {
-		return s.upgradeOpForModel(opFactory, remoteState.CharmURL)
+	if remoteState.ForceCharmUpgrade && s.charmModified(localState, remoteState) {
+		return opFactory.NewUpgrade(remoteState.CharmURL)
 	}
 
 	switch remoteState.ResolvedMode {
@@ -244,18 +237,18 @@ func (s *uniterResolver) nextOpHookError(
 	}
 }
 
-func charmModified(local resolver.LocalState, remote remotestate.Snapshot) bool {
+func (s *uniterResolver) charmModified(local resolver.LocalState, remote remotestate.Snapshot) bool {
 	// CAAS models may not yet have read the charm url from state.
 	if remote.CharmURL == nil {
 		return false
 	}
 	if *local.CharmURL != *remote.CharmURL {
-		logger.Debugf("upgrade from %v to %v", local.CharmURL, remote.CharmURL)
+		s.config.Logger.Debugf("upgrade from %v to %v", local.CharmURL, remote.CharmURL)
 		return true
 	}
 
 	if local.CharmModifiedVersion != remote.CharmModifiedVersion {
-		logger.Debugf("upgrade from CharmModifiedVersion %v to %v", local.CharmModifiedVersion, remote.CharmModifiedVersion)
+		s.config.Logger.Debugf("upgrade from CharmModifiedVersion %v to %v", local.CharmModifiedVersion, remote.CharmModifiedVersion)
 		return true
 	}
 	return false
@@ -302,8 +295,8 @@ func (s *uniterResolver) nextOp(
 		return opFactory.NewRunHook(hook.Info{Kind: hooks.Install})
 	}
 
-	if charmModified(localState, remoteState) {
-		return s.upgradeOpForModel(opFactory, remoteState.CharmURL)
+	if s.charmModified(localState, remoteState) {
+		return opFactory.NewUpgrade(remoteState.CharmURL)
 	}
 
 	configHashChanged := localState.ConfigHash != remoteState.ConfigHash

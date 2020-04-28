@@ -5,14 +5,14 @@ package agentconfigupdater_test
 
 import (
 	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	"github.com/juju/pubsub"
 	jc "github.com/juju/testing/checkers"
+	"github.com/juju/worker/v2"
+	"github.com/juju/worker/v2/dependency"
+	dt "github.com/juju/worker/v2/dependency/testing"
+	"github.com/juju/worker/v2/workertest"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/names.v3"
-	"gopkg.in/juju/worker.v1"
-	"gopkg.in/juju/worker.v1/dependency"
-	dt "gopkg.in/juju/worker.v1/dependency/testing"
-	"gopkg.in/juju/worker.v1/workertest"
 
 	"github.com/juju/juju/agent"
 	basetesting "github.com/juju/juju/api/base/testing"
@@ -139,6 +139,7 @@ func (s *AgentConfigUpdaterSuite) TestCentralHubMissing(c *gc.C) {
 				*result = params.ControllerConfigResult{
 					Config: map[string]interface{}{
 						"mongo-memory-profile": "default",
+						"juju-db-snap-channel": controller.DefaultJujuDBSnapChannel,
 					},
 				}
 			default:
@@ -223,6 +224,7 @@ func (s *AgentConfigUpdaterSuite) startManifold(c *gc.C, a agent.Agent, mockAPIP
 				*result = params.ControllerConfigResult{
 					Config: map[string]interface{}{
 						"mongo-memory-profile": "default",
+						"juju-db-snap-channel": controller.DefaultJujuDBSnapChannel,
 					},
 				}
 			default:
@@ -349,6 +351,9 @@ type mockConfig struct {
 
 	profile    string
 	profileSet bool
+
+	snapChannel    string
+	snapChannelSet bool
 }
 
 func (mc *mockConfig) Tag() names.Tag {
@@ -381,6 +386,18 @@ func (mc *mockConfig) MongoMemoryProfile() mongo.MemoryProfile {
 func (mc *mockConfig) SetMongoMemoryProfile(profile mongo.MemoryProfile) {
 	mc.profile = string(profile)
 	mc.profileSet = true
+}
+
+func (mc *mockConfig) JujuDBSnapChannel() string {
+	if mc.snapChannel == "" {
+		return controller.DefaultJujuDBSnapChannel
+	}
+	return mc.snapChannel
+}
+
+func (mc *mockConfig) SetJujuDBSnapChannel(snapChannel string) {
+	mc.snapChannel = snapChannel
+	mc.snapChannelSet = true
 }
 
 func (mc *mockConfig) LogDir() string {

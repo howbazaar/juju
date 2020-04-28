@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/juju/collections/set"
-	"github.com/juju/description"
+	"github.com/juju/description/v2"
 	"github.com/juju/errors"
+	"github.com/juju/featureflag"
 	"github.com/juju/loggo"
-	"github.com/juju/utils/featureflag"
-	"gopkg.in/juju/names.v3"
+	"github.com/juju/names/v4"
 	"gopkg.in/mgo.v2/bson"
 
 	"github.com/juju/juju/core/crossmodel"
@@ -812,6 +812,7 @@ func (e *exporter) addApplication(ctx addApplicationContext) error {
 		Exposed:              application.doc.Exposed,
 		PasswordHash:         application.doc.PasswordHash,
 		Placement:            application.doc.Placement,
+		HasResources:         application.doc.HasResources,
 		DesiredScale:         application.doc.DesiredScale,
 		MinUnits:             application.doc.MinUnits,
 		EndpointBindings:     map[string]string(ctx.endpoingBindings[globalKey]),

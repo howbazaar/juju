@@ -4,15 +4,16 @@
 package caasoperator_test
 
 import (
+	"github.com/juju/charm/v7"
 	"github.com/juju/errors"
+	"github.com/juju/juju/caas/kubernetes/provider/exec"
 	"github.com/juju/juju/core/life"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/worker/fortress"
+	"github.com/juju/names/v4"
 	"github.com/juju/proxy"
 	"github.com/juju/testing"
 	"github.com/juju/version"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/api/base"
@@ -209,4 +210,25 @@ type mockHookLogger struct {
 
 func (m *mockHookLogger) Stop() {
 	m.stopped = true
+}
+
+type mockExecutor struct {
+	testing.Stub
+
+	status exec.Status
+}
+
+func (m *mockExecutor) Copy(params exec.CopyParams, cancel <-chan struct{}) error {
+	m.MethodCall(m, "Copy", params, cancel)
+	return m.NextErr()
+}
+
+func (m *mockExecutor) Exec(params exec.ExecParams, cancel <-chan struct{}) error {
+	m.MethodCall(m, "Exec", params, cancel)
+	return m.NextErr()
+}
+
+func (m *mockExecutor) Status(params exec.StatusParams) (*exec.Status, error) {
+	m.MethodCall(m, "Status", params)
+	return &m.status, m.NextErr()
 }

@@ -10,11 +10,11 @@ import (
 
 	"github.com/juju/collections/set"
 	"github.com/juju/errors"
+	"github.com/juju/names/v4"
 	jujutxn "github.com/juju/txn"
 	"github.com/juju/utils"
 	"github.com/juju/version"
 	"github.com/kr/pretty"
-	"gopkg.in/juju/names.v3"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"gopkg.in/mgo.v2/txn"
@@ -1455,9 +1455,9 @@ func maybeGetNewAddress(
 	netAddr := getAddr(providerAddresses)
 	if netAddr.Value == "" {
 		netAddr = getAddr(machineAddresses)
-		newAddr = fromNetworkAddress(netAddr, OriginMachine)
+		newAddr = fromNetworkAddress(netAddr, corenetwork.OriginMachine)
 	} else {
-		newAddr = fromNetworkAddress(netAddr, OriginProvider)
+		newAddr = fromNetworkAddress(netAddr, corenetwork.OriginProvider)
 	}
 	// The order of these checks is important. If the stored address is
 	// empty we *always* want to check for a new address so we do that
@@ -1472,7 +1472,8 @@ func maybeGetNewAddress(
 	if !containsAddress(providerAddresses, addr) && !containsAddress(machineAddresses, addr) {
 		return newAddr, true
 	}
-	if Origin(addr.Origin) != OriginProvider && Origin(newAddr.Origin) == OriginProvider {
+	if corenetwork.Origin(addr.Origin) != corenetwork.OriginProvider &&
+		corenetwork.Origin(newAddr.Origin) == corenetwork.OriginProvider {
 		return newAddr, true
 	}
 	if !checkScope(addr) {
@@ -1707,7 +1708,7 @@ func (m *Machine) setAddressesOps(
 		return nil, nil, nil, nil, nil, ErrDead
 	}
 
-	fromNetwork := func(in corenetwork.SpaceAddresses, origin Origin) []address {
+	fromNetwork := func(in corenetwork.SpaceAddresses, origin corenetwork.Origin) []address {
 		sorted := make(corenetwork.SpaceAddresses, len(in))
 		copy(sorted, in)
 		corenetwork.SortAddresses(sorted)
@@ -1718,11 +1719,11 @@ func (m *Machine) setAddressesOps(
 	machineStateAddresses = m.doc.MachineAddresses
 	providerStateAddresses = m.doc.Addresses
 	if machineAddresses != nil {
-		machineStateAddresses = fromNetwork(*machineAddresses, OriginMachine)
+		machineStateAddresses = fromNetwork(*machineAddresses, corenetwork.OriginMachine)
 		set = append(set, bson.DocElem{Name: "machineaddresses", Value: machineStateAddresses})
 	}
 	if providerAddresses != nil {
-		providerStateAddresses = fromNetwork(*providerAddresses, OriginProvider)
+		providerStateAddresses = fromNetwork(*providerAddresses, corenetwork.OriginProvider)
 		set = append(set, bson.DocElem{Name: "addresses", Value: providerStateAddresses})
 	}
 

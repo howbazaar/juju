@@ -6,7 +6,7 @@ package relation_test
 import (
 	"fmt"
 
-	"gopkg.in/juju/charm.v6/hooks"
+	"github.com/juju/charm/v7/hooks"
 
 	"github.com/juju/juju/worker/uniter/hook"
 	"github.com/juju/juju/worker/uniter/operation"
@@ -56,4 +56,8 @@ func (m *mockOperation) Commit(state operation.State) (*operation.State, error) 
 }
 
 func (m *mockOperation) RemoteStateChanged(snapshot remotestate.Snapshot) {
+}
+
+func (m *mockOperation) HookInfo() hook.Info {
+	return m.hookInfo
 }

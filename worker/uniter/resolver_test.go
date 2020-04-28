@@ -4,18 +4,20 @@
 package uniter_test
 
 import (
+	"github.com/juju/charm/v7"
+	"github.com/juju/charm/v7/hooks"
 	"github.com/juju/errors"
+	"github.com/juju/loggo"
+	"github.com/juju/names/v4"
 	"github.com/juju/testing"
 	jc "github.com/juju/testing/checkers"
 	gc "gopkg.in/check.v1"
-	"gopkg.in/juju/charm.v6"
-	"gopkg.in/juju/charm.v6/hooks"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/apiserver/params"
 	"github.com/juju/juju/core/model"
 	"github.com/juju/juju/worker/uniter"
 	uniteractions "github.com/juju/juju/worker/uniter/actions"
+	"github.com/juju/juju/worker/uniter/container"
 	"github.com/juju/juju/worker/uniter/hook"
 	"github.com/juju/juju/worker/uniter/leadership"
 	"github.com/juju/juju/worker/uniter/operation"
@@ -33,7 +35,6 @@ type resolverSuite struct {
 	opFactory            operation.Factory
 	resolver             resolver.Resolver
 	resolverConfig       uniter.ResolverConfig
-	modelType            model.ModelType
 
 	clearResolved   func() error
 	reportHookError func(hook.Info) error
@@ -51,12 +52,49 @@ var _ = gc.Suite(&caasResolverSuite{})
 var _ = gc.Suite(&iaasResolverSuite{})
 
 func (s *caasResolverSuite) SetUpTest(c *gc.C) {
-	s.modelType = model.CAAS
+	attachments, err := storage.NewAttachments(&dummyStorageAccessor{}, names.NewUnitTag("u/0"), &fakeRW{}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+	logger := loggo.GetLogger("test")
+	s.resolverConfig = uniter.ResolverConfig{
+		ClearResolved:       func() error { return s.clearResolved() },
+		ReportHookError:     func(info hook.Info) error { return s.reportHookError(info) },
+		StartRetryHookTimer: func() { s.stub.AddCall("StartRetryHookTimer") },
+		StopRetryHookTimer:  func() { s.stub.AddCall("StopRetryHookTimer") },
+		ShouldRetryHooks:    true,
+		UpgradeSeries:       upgradeseries.NewResolver(),
+		Leadership:          leadership.NewResolver(logger),
+		Actions:             uniteractions.NewResolver(logger),
+		CreatedRelations:    nopResolver{},
+		Relations:           nopResolver{},
+		Storage:             storage.NewResolver(attachments, model.CAAS),
+		Commands:            nopResolver{},
+		ModelType:           model.CAAS,
+		Container:           container.NewResolver(),
+		Logger:              logger,
+	}
 	s.resolverSuite.SetUpTest(c)
 }
 
 func (s *iaasResolverSuite) SetUpTest(c *gc.C) {
-	s.modelType = model.IAAS
+	attachments, err := storage.NewAttachments(&dummyStorageAccessor{}, names.NewUnitTag("u/0"), &fakeRW{}, nil)
+	c.Assert(err, jc.ErrorIsNil)
+	logger := loggo.GetLogger("test")
+	s.resolverConfig = uniter.ResolverConfig{
+		ClearResolved:       func() error { return s.clearResolved() },
+		ReportHookError:     func(info hook.Info) error { return s.reportHookError(info) },
+		StartRetryHookTimer: func() { s.stub.AddCall("StartRetryHookTimer") },
+		StopRetryHookTimer:  func() { s.stub.AddCall("StopRetryHookTimer") },
+		ShouldRetryHooks:    true,
+		UpgradeSeries:       upgradeseries.NewResolver(),
+		Leadership:          leadership.NewResolver(logger),
+		Actions:             uniteractions.NewResolver(logger),
+		CreatedRelations:    nopResolver{},
+		Relations:           nopResolver{},
+		Storage:             storage.NewResolver(attachments, model.IAAS),
+		Commands:            nopResolver{},
+		ModelType:           model.IAAS,
+		Logger:              logger,
+	}
 	s.resolverSuite.SetUpTest(c)
 	s.resolver = uniter.NewUniterResolver(s.resolverConfig)
 }
@@ -68,10 +106,9 @@ func (s *resolverSuite) SetUpTest(c *gc.C) {
 		CharmModifiedVersion: s.charmModifiedVersion,
 		CharmURL:             s.charmURL,
 	}
-	s.opFactory = operation.NewFactory(operation.FactoryParams{})
-
-	attachments, err := storage.NewAttachments(&dummyStorageAccessor{}, names.NewUnitTag("u/0"), &fakeRW{}, nil)
-	c.Assert(err, jc.ErrorIsNil)
+	s.opFactory = operation.NewFactory(operation.FactoryParams{
+		Logger: loggo.GetLogger("test"),
+	})
 
 	s.clearResolved = func() error {
 		return errors.New("unexpected resolved")
@@ -79,22 +116,6 @@ func (s *resolverSuite) SetUpTest(c *gc.C) {
 
 	s.reportHookError = func(hook.Info) error {
 		return errors.New("unexpected report hook error")
-	}
-
-	s.resolverConfig = uniter.ResolverConfig{
-		ClearResolved:       func() error { return s.clearResolved() },
-		ReportHookError:     func(info hook.Info) error { return s.reportHookError(info) },
-		StartRetryHookTimer: func() { s.stub.AddCall("StartRetryHookTimer") },
-		StopRetryHookTimer:  func() { s.stub.AddCall("StopRetryHookTimer") },
-		ShouldRetryHooks:    true,
-		UpgradeSeries:       upgradeseries.NewResolver(),
-		Leadership:          leadership.NewResolver(),
-		Actions:             uniteractions.NewResolver(),
-		CreatedRelations:    nopResolver{},
-		Relations:           nopResolver{},
-		Storage:             storage.NewResolver(attachments, s.modelType),
-		Commands:            nopResolver{},
-		ModelType:           s.modelType,
 	}
 
 	s.resolver = uniter.NewUniterResolver(s.resolverConfig)

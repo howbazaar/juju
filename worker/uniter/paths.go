@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/juju/names/v4"
 	jujuos "github.com/juju/os"
-	"gopkg.in/juju/names.v3"
 
 	"github.com/juju/juju/agent"
 	"github.com/juju/juju/agent/tools"
@@ -114,24 +114,12 @@ type StatePaths struct {
 	// CharmDir is the directory to which the charm the uniter runs is deployed.
 	CharmDir string
 
-	// OperationsFile holds information about what the uniter is doing
-	// and/or has done.
-	OperationsFile string
-
-	// RelationsDir holds relation-specific information about what the
-	// uniter is doing and/or has done.
-	RelationsDir string
-
 	// BundlesDir holds downloaded charms.
 	BundlesDir string
 
 	// DeployerDir holds metadata about charms that are installing or have
 	// been installed.
 	DeployerDir string
-
-	// StorageDir holds storage-specific information about what the
-	// uniter is doing and/or has done.
-	StorageDir string
 
 	// MetricsSpoolDir acts as temporary storage for metrics being sent from
 	// the uniter to state.
@@ -207,11 +195,8 @@ func NewWorkerPaths(dataDir string, unitTag names.UnitTag, worker string, socket
 		State: StatePaths{
 			BaseDir:         baseDir,
 			CharmDir:        join(baseDir, "charm"),
-			OperationsFile:  join(stateDir, "uniter"),
-			RelationsDir:    join(stateDir, "relations"),
 			BundlesDir:      join(stateDir, "bundles"),
 			DeployerDir:     join(stateDir, "deployer"),
-			StorageDir:      join(stateDir, "storage"),
 			MetricsSpoolDir: join(stateDir, "spool", "metrics"),
 		},
 	}
