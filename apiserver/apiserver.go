@@ -63,6 +63,8 @@ type Server struct {
 	pingClock clock.Clock
 	wg        sync.WaitGroup
 
+	apiConnections *APIConnections
+
 	shared *sharedServerContext
 
 	// tag of the machine where the API server is running.
@@ -267,7 +269,8 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 const readyTimeout = time.Second * 30
 
 func newServer(cfg ServerConfig) (_ *Server, err error) {
-	controllerConfig, err := cfg.StatePool.SystemState().ControllerConfig()
+	controllerState := cfg.StatePool.SystemState()
+	controllerConfig, err := controllerState.ControllerConfig()
 	if err != nil {
 		return nil, errors.Annotate(err, "unable to get controller config")
 	}
@@ -285,9 +288,14 @@ func newServer(cfg ServerConfig) (_ *Server, err error) {
 	if err != nil {
 		return nil, errors.Trace(err)
 	}
+	apiConnections, err := NewAPIConnections(controllerState.ModelUUID(), cfg.Hub)
+	if err != nil {
+		return nil, errors.Trace(err)
+	}
 	srv := &Server{
 		clock:                         cfg.Clock,
 		pingClock:                     cfg.pingClock(),
+		apiConnections:                apiConnections,
 		newObserver:                   cfg.NewObserver,
 		shared:                        shared,
 		tag:                           cfg.Tag,
@@ -366,6 +374,7 @@ func newServer(cfg ServerConfig) (_ *Server, err error) {
 
 	ready := make(chan struct{})
 	srv.tomb.Go(func() error {
+		defer srv.apiConnections.Close()
 		defer srv.dbloggers.dispose()
 		defer srv.logSinkWriter.Close()
 		defer srv.shared.Close()
@@ -391,6 +400,7 @@ func (srv *Server) Report() map[string]interface{} {
 	result := map[string]interface{}{
 		"agent-ratelimit-max":  srv.agentRateLimitMax,
 		"agent-ratelimit-rate": srv.agentRateLimitRate,
+		"api-connections":      srv.apiConnections.Report(),
 	}
 
 	if srv.publicDNSName_ != "" {
@@ -953,6 +963,9 @@ func (srv *Server) serveConn(
 	recorderFactory := observer.NewRecorderFactory(
 		apiObserver, nil, observer.NoCaptureArgs)
 	conn := rpc.NewConn(codec, recorderFactory)
+
+	srv.apiConnections.Add(connectionID, conn)
+	defer srv.apiConnections.Remove(connectionID)
 
 	// Note that we don't overwrite modelUUID here because
 	// newAPIHandler treats an empty modelUUID as signifying
